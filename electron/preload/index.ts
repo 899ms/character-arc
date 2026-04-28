@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('characterArc', {
   loadWorkspace: () => ipcRenderer.invoke('characterarc:load-workspace'),
   saveWorkspace: (payload: unknown) => ipcRenderer.invoke('characterarc:save-workspace', payload),
   pickCoverImage: () => ipcRenderer.invoke('characterarc:pick-cover-image'),
+  generateAi: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-generate', payload),
   exportJson: (payload: unknown) => ipcRenderer.invoke('characterarc:export-json', payload),
   exportText: (payload: unknown) => ipcRenderer.invoke('characterarc:export-text', payload),
   importJson: () => ipcRenderer.invoke('characterarc:import-json')

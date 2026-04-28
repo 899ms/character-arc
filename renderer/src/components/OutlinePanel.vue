@@ -46,23 +46,45 @@ function handleCreateOutline(): void {
   editorVisible.value = true
 }
 
-function handleExpandOutline(): void {
+async function handleExpandOutline(): Promise<void> {
   if (isExpanding.value) {
     return
   }
 
   isExpanding.value = true
 
-  window.setTimeout(() => {
-    appStore.createOutlineItem({
-      title: `第${appStore.outlineItems.length + 1}章：夜城回响`,
-      wordTarget: '预估 3200字',
-      conflict: '旧记忆与现实情报发生冲突。',
-      summary: '主角通过记忆回响锁定一段被篡改的线索，却因此暴露了自身的位置，被迫提前面对追猎者。'
-    })
+  const result = await window.characterArc.generateAi({
+    task: 'outline-item',
+    settings: appStore.appSettings,
+    context: {
+      projectTitle: appStore.currentProject?.title,
+      projectGenre: appStore.currentProject?.genre,
+      outlineTitles: appStore.outlineItems.map((item) => item.title),
+      worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title)
+    }
+  })
+
+  if (!result.success || !result.result) {
     isExpanding.value = false
-    message.success('AI 已补充新的大纲节点')
-  }, 700)
+    message.error(result.error ?? 'AI 扩写大纲失败，请检查模型配置')
+    return
+  }
+
+  const item = result.result as {
+    title?: string
+    wordTarget?: string
+    conflict?: string
+    summary?: string
+  }
+
+  appStore.createOutlineItem({
+    title: item.title ?? `第${appStore.outlineItems.length + 1}章：新剧情节点`,
+    wordTarget: item.wordTarget ?? '预估 3000字',
+    conflict: item.conflict ?? '新的冲突正在酝酿。',
+    summary: item.summary ?? 'AI 未返回有效剧情摘要'
+  })
+  isExpanding.value = false
+  message.success('AI 已补充新的大纲节点')
 }
 
 function openEditor(item?: OutlineItem): void {

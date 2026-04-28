@@ -6,6 +6,7 @@ electron.contextBridge.exposeInMainWorld("characterArc", {
   loadWorkspace: () => electron.ipcRenderer.invoke("characterarc:load-workspace"),
   saveWorkspace: (payload) => electron.ipcRenderer.invoke("characterarc:save-workspace", payload),
   pickCoverImage: () => electron.ipcRenderer.invoke("characterarc:pick-cover-image"),
+  generateAi: (payload) => electron.ipcRenderer.invoke("characterarc:ai-generate", payload),
   exportJson: (payload) => electron.ipcRenderer.invoke("characterarc:export-json", payload),
   exportText: (payload) => electron.ipcRenderer.invoke("characterarc:export-text", payload),
   importJson: () => electron.ipcRenderer.invoke("characterarc:import-json")

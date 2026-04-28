@@ -64,27 +64,45 @@ function handleCreateCharacter(): void {
   editorVisible.value = true
 }
 
-function handleGenerateCharacter(): void {
+async function handleGenerateCharacter(): Promise<void> {
   if (isGenerating.value) {
     return
   }
 
   isGenerating.value = true
 
-  window.setTimeout(() => {
-    appStore.createCharacter({
-      name: '苏澜',
-      role: '情报中间人',
-      avatar: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      description: '活跃在夜城灰色地带的信息贩子，擅长用碎片情报操纵局势，表面轻佻，实则极度谨慎。',
-      tags: [
-        { label: '情报中间人' },
-        { label: '危险盟友', tone: 'danger' }
-      ]
-    })
+  const result = await window.characterArc.generateAi({
+    task: 'character-card',
+    settings: appStore.appSettings,
+    context: {
+      projectTitle: appStore.currentProject?.title,
+      projectGenre: appStore.currentProject?.genre,
+      characterNames: appStore.characters.map((character) => character.name),
+      worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title)
+    }
+  })
+
+  if (!result.success || !result.result) {
     isGenerating.value = false
-    message.success('AI 已生成新的角色草稿')
-  }, 700)
+    message.error(result.error ?? 'AI 生成角色失败，请检查模型配置')
+    return
+  }
+
+  const character = result.result as {
+    name?: string
+    role?: string
+    description?: string
+    tags?: string[]
+  }
+
+  appStore.createCharacter({
+    name: character.name ?? '新角色',
+    role: character.role ?? '待设定',
+    description: character.description ?? 'AI 未返回有效角色描述',
+    tags: (character.tags ?? ['待完善']).map((label) => ({ label }))
+  })
+  isGenerating.value = false
+  message.success('AI 已生成新的角色草稿')
 }
 
 function openEditor(character?: CharacterCard): void {

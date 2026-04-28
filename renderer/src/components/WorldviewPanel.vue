@@ -48,22 +48,42 @@ function handleCreateEntry(): void {
   editorVisible.value = true
 }
 
-function handleGenerateEntry(): void {
+async function handleGenerateEntry(): Promise<void> {
   if (isGenerating.value) {
     return
   }
 
   isGenerating.value = true
 
-  // Keep this mocked generation light for now; later it can be replaced with the real AI pipeline.
-  window.setTimeout(() => {
-    appStore.createWorldviewEntry({
-      title: '新法则：记忆回响',
-      content: '某些高强度情绪会在夜城的义体网络中留下“记忆回响”，被特定接口捕捉后可重现他人的感官残影。'
-    })
+  const result = await window.characterArc.generateAi({
+    task: 'worldview-entry',
+    settings: appStore.appSettings,
+    context: {
+      projectTitle: appStore.currentProject?.title,
+      projectGenre: appStore.currentProject?.genre,
+      worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title)
+    }
+  })
+
+  if (!result.success || !result.result) {
     isGenerating.value = false
-    message.success('AI 已生成新的世界观词条草稿')
-  }, 700)
+    message.error(result.error ?? 'AI 扩写失败，请检查模型配置')
+    return
+  }
+
+  const entry = result.result as {
+    type?: string
+    title?: string
+    content?: string
+  }
+
+  appStore.createWorldviewEntry({
+    type: entry.type ?? '地理',
+    title: entry.title ?? '新世界观词条',
+    content: entry.content ?? 'AI 未返回有效内容'
+  })
+  isGenerating.value = false
+  message.success('AI 已生成新的世界观词条草稿')
 }
 
 function openEditor(entry?: WorldviewEntry): void {

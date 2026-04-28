@@ -26,6 +26,11 @@ async function handleExportJson(): Promise<void> {
   const result = await window.characterArc.exportJson(payload)
   if (result.success) {
     message.success('项目数据已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出 JSON 失败，请稍后重试')
   }
 }
 
@@ -42,6 +47,11 @@ async function handleExportText(): Promise<void> {
   const result = await window.characterArc.exportText(payload)
   if (result.success) {
     message.success('章节内容已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出 TXT 失败，请稍后重试')
   }
 }
 
@@ -96,6 +106,13 @@ async function handleImportJson(): Promise<void> {
             @update:value="(value) => appStore.updateAppSetting('provider', value ?? 'deepseek')"
           />
         </n-form-item>
+        <n-form-item label="模型名称">
+          <n-input
+            :value="appStore.appSettings.model"
+            @update:value="(value) => appStore.updateAppSetting('model', value)"
+            placeholder="例如：deepseek-chat / gpt-4o-mini / claude-3-5-sonnet-latest"
+          />
+        </n-form-item>
         <n-form-item label="API Key">
           <n-input
             type="password"
@@ -118,6 +135,12 @@ async function handleImportJson(): Promise<void> {
             <span>存储与备份</span>
           </div>
         </template>
+        <div class="storage-status" :class="{ error: appStore.persistenceError }">
+          <strong>{{ appStore.persistenceError ? '本地数据状态异常' : '本地数据状态正常' }}</strong>
+          <span>
+            {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化。' }}
+          </span>
+        </div>
         <div class="setting-row">
           <div>
             <div class="setting-name">自动保存时间间隔</div>
@@ -258,6 +281,37 @@ async function handleImportJson(): Promise<void> {
   display: flex;
   gap: 12px;
   margin-top: 24px;
+}
+
+.storage-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.82);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.storage-status strong {
+  font-size: 13px;
+}
+
+.storage-status span {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.storage-status.error {
+  border-color: rgba(254, 202, 202, 0.95);
+  background: rgba(254, 242, 242, 0.96);
+}
+
+.storage-status.error span,
+.storage-status.error strong {
+  color: #991b1b;
 }
 
 .theme-swatches {

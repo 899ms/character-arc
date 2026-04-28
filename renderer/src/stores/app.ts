@@ -146,6 +146,7 @@ const initialMessages: ChatMessage[] = [
 
 const defaultAppSettings: AppSettings = {
   provider: 'deepseek',
+  model: 'deepseek-chat',
   apiKey: 'sk-1234567890abcdef',
   baseUrl: 'https://api.deepseek.com/v1',
   autoSaveInterval: '5m'
@@ -420,6 +421,20 @@ export const useAppStore = defineStore('app', () => {
     activePanel.value = 'chapters'
   }
 
+  function moveChapter(chapterId: string, targetChapterId: string): void {
+    const sourceIndex = chapters.value.findIndex((chapter) => chapter.id === chapterId)
+    const targetIndex = chapters.value.findIndex((chapter) => chapter.id === targetChapterId)
+
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+      return
+    }
+
+    const nextChapters = [...chapters.value]
+    const [movedChapter] = nextChapters.splice(sourceIndex, 1)
+    nextChapters.splice(targetIndex, 0, movedChapter)
+    chapters.value = nextChapters
+  }
+
   function createOutlineItem(payload?: Partial<OutlineItem>): void {
     outlineItems.value.push({
       id: `outline-${Date.now()}`,
@@ -576,6 +591,7 @@ export const useAppStore = defineStore('app', () => {
     insertIntoChapter,
     importProjectData,
     messages,
+    moveChapter,
     openProject,
     openWizard,
     outlineItems,

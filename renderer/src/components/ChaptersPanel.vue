@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { FilePenLine, Globe2, MoreVertical, PenTool, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
+import { FilePenLine, Globe2, GripVertical, MoreVertical, PenTool, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
 import { NButton, NDropdown, NForm, NFormItem, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { ChapterDraft } from '@/types/app'
@@ -17,6 +17,8 @@ const activeHelper = ref<'polish' | 'world' | null>(null)
 const saveState = ref<'saved' | 'saving'>('saved')
 const polishPrompt = ref('优化当前段落的氛围感和节奏。')
 const editorVisible = ref(false)
+const draggingChapterId = ref<string | null>(null)
+const dragTargetChapterId = ref<string | null>(null)
 const chapterForm = reactive({
   title: ''
 })
@@ -126,6 +128,42 @@ function handleChapterMenuSelect(action: string | number, chapter: ChapterDraft)
   })
 }
 
+function handleDragStart(chapterId: string, event: DragEvent): void {
+  draggingChapterId.value = chapterId
+  dragTargetChapterId.value = chapterId
+  event.dataTransfer?.setData('text/plain', chapterId)
+  event.dataTransfer?.setDragImage?.(event.currentTarget as Element, 18, 18)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function handleDragOver(chapterId: string, event: DragEvent): void {
+  event.preventDefault()
+  dragTargetChapterId.value = chapterId
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function handleDrop(chapterId: string, event: DragEvent): void {
+  event.preventDefault()
+  const sourceId = draggingChapterId.value || event.dataTransfer?.getData('text/plain')
+  if (!sourceId) {
+    return
+  }
+
+  // Native drag-and-drop is enough for this first-stage desktop sorter and avoids adding another dependency.
+  appStore.moveChapter(sourceId, chapterId)
+  dragTargetChapterId.value = null
+  draggingChapterId.value = null
+}
+
+function resetDragState(): void {
+  draggingChapterId.value = null
+  dragTargetChapterId.value = null
+}
+
 watch(
   () => [appStore.selectedChapter?.title, appStore.selectedChapter?.content],
   () => {
@@ -177,9 +215,21 @@ onBeforeUnmount(() => {
             v-for="chapter in filteredChapters"
             :key="chapter.id"
             class="chapter-pill"
-            :class="{ active: appStore.selectedChapterId === chapter.id }"
+            :class="{
+              active: appStore.selectedChapterId === chapter.id,
+              dragging: draggingChapterId === chapter.id,
+              'drop-target': dragTargetChapterId === chapter.id && draggingChapterId !== chapter.id
+            }"
+            draggable="true"
             @click="appStore.selectChapter(chapter.id)"
+            @dragstart="handleDragStart(chapter.id, $event)"
+            @dragover="handleDragOver(chapter.id, $event)"
+            @drop="handleDrop(chapter.id, $event)"
+            @dragend="resetDragState"
           >
+            <span class="chapter-pill-grip" @click.stop>
+              <GripVertical :size="14" />
+            </span>
             <span class="chapter-pill-label">{{ chapter.title }}</span>
             <n-dropdown :options="chapterMenuOptions" placement="bottom-end" @select="(key) => handleChapterMenuSelect(key, chapter)">
               <span class="chapter-pill-action" @click.stop>
@@ -392,10 +442,33 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.04);
 }
 
+.chapter-pill.dragging {
+  opacity: 0.56;
+}
+
+.chapter-pill.drop-target {
+  outline: 1px dashed color-mix(in srgb, var(--arc-primary) 36%, white);
+  background: color-mix(in srgb, var(--arc-primary) 8%, white);
+}
+
 .chapter-pill.active {
   background: white;
   color: var(--arc-primary);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.chapter-pill-grip {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: #c4cad4;
+  flex-shrink: 0;
+}
+
+.chapter-pill:hover .chapter-pill-grip {
+  color: #9ca3af;
 }
 
 .chapter-pill-label {

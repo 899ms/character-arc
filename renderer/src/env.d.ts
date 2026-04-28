@@ -20,6 +20,11 @@ declare global {
         filePath?: string
         dataUrl?: string
       }>
+      generateAi: (payload: unknown) => Promise<{
+        success: boolean
+        result?: unknown
+        error?: string
+      }>
       exportJson: (payload: unknown) => Promise<{
         success: boolean
         canceled: boolean

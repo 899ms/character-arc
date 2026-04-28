@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
+import { NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides } from '@/theme/presets'
 import ProjectCenter from '@/pages/ProjectCenter.vue'
@@ -40,7 +40,15 @@ const appStyleVars = computed(() => ({
         <div class="app-shell" :style="appStyleVars">
           <div class="app-titlebar arc-drag-region"></div>
           <div class="app-content">
-            <Transition name="view-fade" mode="out-in">
+            <div v-if="appStore.persistenceError" class="app-error-banner">
+              <strong>本地数据读写异常</strong>
+              <span>{{ appStore.persistenceError }}</span>
+            </div>
+            <div v-if="!appStore.hasHydrated" class="app-loading">
+              <n-spin size="large" />
+              <p>正在载入本地工作区...</p>
+            </div>
+            <Transition v-else name="view-fade" mode="out-in">
               <ProjectCenter v-if="appStore.currentView === 'projects'" key="projects" />
               <ProjectWizardPage v-else-if="appStore.currentView === 'wizard'" key="wizard" />
               <WorkbenchPage v-else key="workbench" />

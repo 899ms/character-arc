@@ -2,12 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
+import { generateAiTask, type AiTaskPayload } from './ai'
 
 const APP_MIN_WIDTH = 1360
 const APP_MIN_HEIGHT = 860
 const WORKSPACE_DB = 'workspace.db'
 const WORKSPACE_FILE = 'workspace.json'
-const WORKSPACE_KEY = 'active-workspace'
 
 function createMainWindow(): void {
   const window = new BrowserWindow({
@@ -78,35 +78,296 @@ async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   await ensureWorkspaceDir()
   workspaceDb = new DatabaseSync(getWorkspaceDbPath())
   workspaceDb.exec(`
-    CREATE TABLE IF NOT EXISTS workspace_state (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      genre TEXT NOT NULL,
+      word_count TEXT NOT NULL,
+      last_edited TEXT NOT NULL,
+      cover TEXT NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS worldview_entries (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS characters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      description TEXT NOT NULL,
+      avatar TEXT NOT NULL,
+      tags_json TEXT NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS outline_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      word_target TEXT NOT NULL,
+      conflict TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS chapters (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      theme TEXT NOT NULL,
+      selected_project_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      auto_save_interval TEXT NOT NULL
     ) STRICT;
   `)
+
+  ensureAppSettingsColumns(workspaceDb)
 
   await migrateLegacyWorkspaceFile(workspaceDb)
   return workspaceDb
 }
 
-async function migrateLegacyWorkspaceFile(db: DatabaseSync): Promise<void> {
-  const hasWorkspace = db.prepare('SELECT value FROM workspace_state WHERE key = ?').get(WORKSPACE_KEY) as
-    | { value: string }
-    | undefined
+function ensureAppSettingsColumns(db: DatabaseSync): void {
+  const columns = db.prepare(`PRAGMA table_info('app_settings')`).all() as Array<{ name: string }>
+  const columnNames = new Set(columns.map((column) => column.name))
 
-  if (hasWorkspace) {
+  if (!columnNames.has('model')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN model TEXT NOT NULL DEFAULT 'deepseek-chat';`)
+  }
+}
+
+async function migrateLegacyWorkspaceFile(db: DatabaseSync): Promise<void> {
+  const hasProject = db.prepare('SELECT id FROM projects LIMIT 1').get() as { id: string } | undefined
+
+  if (hasProject) {
     return
   }
 
   try {
     const legacyRaw = await readFile(getWorkspaceFilePath(), 'utf-8')
     const legacyPayload = JSON.parse(legacyRaw)
-    db.prepare(`
-      INSERT INTO workspace_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-    `).run(WORKSPACE_KEY, JSON.stringify(legacyPayload), new Date().toISOString())
+    writeWorkspaceSnapshot(db, legacyPayload as WorkspacePayload)
   } catch {
     // Ignore missing or invalid legacy files and let the renderer fall back to defaults.
+  }
+}
+
+type WorkspacePayload = {
+  theme: string
+  selectedProjectId: string
+  projects: Array<{
+    id: string
+    title: string
+    genre: string
+    wordCount: string
+    lastEdited: string
+    cover: string
+  }>
+  worldviewEntries: Array<{
+    id: string
+    type: string
+    title: string
+    content: string
+  }>
+  characters: Array<{
+    id: string
+    name: string
+    role: string
+    description: string
+    avatar: string
+    tags: Array<{ label: string; tone?: string }>
+  }>
+  outlineItems: Array<{
+    id: string
+    title: string
+    wordTarget: string
+    conflict: string
+    summary: string
+  }>
+  chapters: Array<{
+    id: string
+    title: string
+    content: string
+  }>
+  appSettings: {
+    provider: string
+    model: string
+    apiKey: string
+    baseUrl: string
+    autoSaveInterval: string
+  }
+}
+
+function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
+  const projects = db.prepare(`
+    SELECT id, title, genre, word_count AS wordCount, last_edited AS lastEdited, cover
+    FROM projects
+    ORDER BY rowid ASC
+  `).all() as WorkspacePayload['projects']
+
+  if (projects.length === 0) {
+    return null
+  }
+
+  const worldviewEntries = db.prepare(`
+    SELECT id, type, title, content
+    FROM worldview_entries
+    ORDER BY sort_order ASC
+  `).all() as WorkspacePayload['worldviewEntries']
+
+  const characters = db.prepare(`
+    SELECT id, name, role, description, avatar, tags_json AS tagsJson
+    FROM characters
+    ORDER BY rowid ASC
+  `).all().map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    role: row.role as string,
+    description: row.description as string,
+    avatar: row.avatar as string,
+    tags: JSON.parse(row.tagsJson as string) as Array<{ label: string; tone?: string }>
+  })) as WorkspacePayload['characters']
+
+  const outlineItems = db.prepare(`
+    SELECT id, title, word_target AS wordTarget, conflict, summary
+    FROM outline_items
+    ORDER BY sort_order ASC
+  `).all() as WorkspacePayload['outlineItems']
+
+  const chapters = db.prepare(`
+    SELECT id, title, content
+    FROM chapters
+    ORDER BY sort_order ASC
+  `).all() as WorkspacePayload['chapters']
+
+  const settings = db.prepare(`
+    SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, auto_save_interval AS autoSaveInterval
+    , model
+    FROM app_settings
+    WHERE id = 1
+  `).get() as
+    | {
+        theme: string
+        selectedProjectId: string
+        provider: string
+        model: string
+        apiKey: string
+        baseUrl: string
+        autoSaveInterval: string
+      }
+    | undefined
+
+  if (!settings) {
+    return null
+  }
+
+  return {
+    theme: settings.theme,
+    selectedProjectId: settings.selectedProjectId,
+    projects,
+    worldviewEntries,
+    characters,
+    outlineItems,
+    chapters,
+    appSettings: {
+      provider: settings.provider,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      baseUrl: settings.baseUrl,
+      autoSaveInterval: settings.autoSaveInterval
+    }
+  }
+}
+
+function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePayload): void {
+  db.exec('BEGIN')
+  try {
+    db.exec(`
+      DELETE FROM projects;
+      DELETE FROM worldview_entries;
+      DELETE FROM characters;
+      DELETE FROM outline_items;
+      DELETE FROM chapters;
+      DELETE FROM app_settings;
+    `)
+
+    const insertProject = db.prepare(`
+      INSERT INTO projects (id, title, genre, word_count, last_edited, cover)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    for (const project of payload.projects) {
+      insertProject.run(project.id, project.title, project.genre, project.wordCount, project.lastEdited, project.cover)
+    }
+
+    const insertWorldview = db.prepare(`
+      INSERT INTO worldview_entries (id, type, title, content, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    payload.worldviewEntries.forEach((entry, index) => {
+      insertWorldview.run(entry.id, entry.type, entry.title, entry.content, index)
+    })
+
+    const insertCharacter = db.prepare(`
+      INSERT INTO characters (id, name, role, description, avatar, tags_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    for (const character of payload.characters) {
+      insertCharacter.run(
+        character.id,
+        character.name,
+        character.role,
+        character.description,
+        character.avatar,
+        JSON.stringify(character.tags)
+      )
+    }
+
+    const insertOutline = db.prepare(`
+      INSERT INTO outline_items (id, title, word_target, conflict, summary, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    payload.outlineItems.forEach((item, index) => {
+      insertOutline.run(item.id, item.title, item.wordTarget, item.conflict, item.summary, index)
+    })
+
+    const insertChapter = db.prepare(`
+      INSERT INTO chapters (id, title, content, sort_order)
+      VALUES (?, ?, ?, ?)
+    `)
+    payload.chapters.forEach((chapter, index) => {
+      insertChapter.run(chapter.id, chapter.title, chapter.content, index)
+    })
+
+    db.prepare(`
+      INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, auto_save_interval)
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      payload.theme,
+      payload.selectedProjectId,
+      payload.appSettings.provider,
+      payload.appSettings.model,
+      payload.appSettings.apiKey,
+      payload.appSettings.baseUrl,
+      payload.appSettings.autoSaveInterval
+    )
+
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
   }
 }
 
@@ -307,14 +568,27 @@ ipcMain.handle('characterarc:pick-cover-image', async () => {
   }
 })
 
+ipcMain.handle('characterarc:ai-generate', async (_event, payload: AiTaskPayload) => {
+  try {
+    const result = await generateAiTask(payload)
+    return {
+      success: true,
+      result
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'AI 调用失败'
+    }
+  }
+})
+
 ipcMain.handle('characterarc:load-workspace', async () => {
   try {
     const db = await ensureWorkspaceDb()
-    const row = db.prepare('SELECT value FROM workspace_state WHERE key = ?').get(WORKSPACE_KEY) as
-      | { value: string }
-      | undefined
+    const workspace = readWorkspaceSnapshot(db)
 
-    if (!row) {
+    if (!workspace) {
       return {
         success: false,
         payload: null
@@ -323,7 +597,7 @@ ipcMain.handle('characterarc:load-workspace', async () => {
 
     return {
       success: true,
-      payload: JSON.parse(row.value)
+      payload: workspace
     }
   } catch (error) {
     return {
@@ -337,13 +611,7 @@ ipcMain.handle('characterarc:load-workspace', async () => {
 ipcMain.handle('characterarc:save-workspace', async (_event, payload: unknown) => {
   try {
     const db = await ensureWorkspaceDb()
-    db.prepare(`
-      INSERT INTO workspace_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `).run(WORKSPACE_KEY, JSON.stringify(payload), new Date().toISOString())
+    writeWorkspaceSnapshot(db, payload as WorkspacePayload)
 
     return {
       success: true

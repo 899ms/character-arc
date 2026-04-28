@@ -54,6 +54,7 @@ export interface ChapterDraft {
 
 export interface AppSettings {
   provider: string
+  model: string
   apiKey: string
   baseUrl: string
   autoSaveInterval: string

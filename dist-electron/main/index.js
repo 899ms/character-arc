@@ -3,11 +3,162 @@ const electron = require("electron");
 const node_path = require("node:path");
 const promises = require("node:fs/promises");
 const node_sqlite = require("node:sqlite");
+function resolveProviderDefaults(provider) {
+  switch (provider) {
+    case "openai":
+      return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" };
+    case "deepseek":
+      return { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" };
+    case "anthropic":
+      return { baseUrl: "https://api.anthropic.com", model: "claude-3-5-sonnet-latest" };
+    case "ollama":
+      return { baseUrl: "http://127.0.0.1:11434/v1", model: "llama3.2" };
+    default:
+      return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" };
+  }
+}
+function normalizeSettings(settings) {
+  const defaults = resolveProviderDefaults(settings.provider);
+  return {
+    provider: settings.provider,
+    model: settings.model?.trim() || defaults.model,
+    apiKey: settings.apiKey?.trim() || "",
+    baseUrl: settings.baseUrl?.trim() || defaults.baseUrl
+  };
+}
+function buildTaskPrompt(task) {
+  const { context } = task;
+  if (task.task === "worldview-entry") {
+    return {
+      system: "你是小说世界观设定助手。请只返回 JSON 对象，不要返回 Markdown。字段必须包含 type、title、content。",
+      user: `基于以下上下文，为当前小说项目新增一条世界观设定。
+
+项目标题：${String(context.projectTitle ?? "")}
+项目题材：${String(context.projectGenre ?? "")}
+已有世界观：${JSON.stringify(context.worldviewTitles ?? [])}
+
+要求：
+1. 返回一条不与已有条目重复的新设定
+2. type 必须是 地理 / 法则 / 物种 / 势力 / 历史 之一
+3. title 要简洁
+4. content 用中文完整描述，80 到 180 字
+
+返回格式：{"type":"","title":"","content":""}`
+    };
+  }
+  if (task.task === "character-card") {
+    return {
+      system: "你是小说角色设定助手。请只返回 JSON 对象，不要返回 Markdown。字段必须包含 name、role、description、tags。",
+      user: `基于以下上下文，为当前小说项目生成一名新角色。
+
+项目标题：${String(context.projectTitle ?? "")}
+项目题材：${String(context.projectGenre ?? "")}
+已有角色：${JSON.stringify(context.characterNames ?? [])}
+世界观关键词：${JSON.stringify(context.worldviewTitles ?? [])}
+
+要求：
+1. 不与已有角色重名
+2. role 用短语概括角色定位
+3. description 用中文完整描述，80 到 160 字
+4. tags 返回 2 到 4 个简短标签数组
+
+返回格式：{"name":"","role":"","description":"","tags":["",""]}`
+    };
+  }
+  return {
+    system: "你是小说剧情大纲助手。请只返回 JSON 对象，不要返回 Markdown。字段必须包含 title、wordTarget、conflict、summary。",
+    user: `基于以下上下文，为当前小说项目补充一个新的章节大纲节点。
+
+项目标题：${String(context.projectTitle ?? "")}
+项目题材：${String(context.projectGenre ?? "")}
+已有大纲：${JSON.stringify(context.outlineTitles ?? [])}
+世界观关键词：${JSON.stringify(context.worldviewTitles ?? [])}
+
+要求：
+1. title 为新的章节标题
+2. wordTarget 使用“预估 xxxx字”格式
+3. conflict 用一句话概括核心冲突
+4. summary 用中文描述剧情推进，80 到 180 字
+
+返回格式：{"title":"","wordTarget":"","conflict":"","summary":""}`
+  };
+}
+function extractJsonObject(text) {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  const raw = fenced?.[1] ?? text;
+  const firstBrace = raw.indexOf("{");
+  const lastBrace = raw.lastIndexOf("}");
+  const jsonSlice = firstBrace >= 0 && lastBrace >= 0 ? raw.slice(firstBrace, lastBrace + 1) : raw;
+  return JSON.parse(jsonSlice);
+}
+async function requestOpenAiCompatible(settings, prompt) {
+  const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      temperature: 0.8,
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user }
+      ]
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`AI 请求失败：${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("AI 返回内容为空");
+  }
+  return content;
+}
+async function requestAnthropic(settings, prompt) {
+  const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      max_tokens: 600,
+      system: prompt.system,
+      messages: [
+        { role: "user", content: prompt.user }
+      ]
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Anthropic 请求失败：${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  const content = data.content?.find((item) => item.type === "text")?.text;
+  if (!content) {
+    throw new Error("Anthropic 返回内容为空");
+  }
+  return content;
+}
+async function generateAiTask(task) {
+  const settings = normalizeSettings(task.settings);
+  const prompt = buildTaskPrompt(task);
+  let rawText = "";
+  if (settings.provider === "anthropic") {
+    rawText = await requestAnthropic(settings, prompt);
+  } else {
+    rawText = await requestOpenAiCompatible(settings, prompt);
+  }
+  return extractJsonObject(rawText);
+}
 const APP_MIN_WIDTH = 1360;
 const APP_MIN_HEIGHT = 860;
 const WORKSPACE_DB = "workspace.db";
 const WORKSPACE_FILE = "workspace.json";
-const WORKSPACE_KEY = "active-workspace";
 function createMainWindow() {
   const window = new electron.BrowserWindow({
     width: 1560,
@@ -64,28 +215,215 @@ async function ensureWorkspaceDb() {
   await ensureWorkspaceDir();
   workspaceDb = new node_sqlite.DatabaseSync(getWorkspaceDbPath());
   workspaceDb.exec(`
-    CREATE TABLE IF NOT EXISTS workspace_state (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      genre TEXT NOT NULL,
+      word_count TEXT NOT NULL,
+      last_edited TEXT NOT NULL,
+      cover TEXT NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS worldview_entries (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS characters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      description TEXT NOT NULL,
+      avatar TEXT NOT NULL,
+      tags_json TEXT NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS outline_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      word_target TEXT NOT NULL,
+      conflict TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS chapters (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      theme TEXT NOT NULL,
+      selected_project_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      auto_save_interval TEXT NOT NULL
     ) STRICT;
   `);
+  ensureAppSettingsColumns(workspaceDb);
   await migrateLegacyWorkspaceFile(workspaceDb);
   return workspaceDb;
 }
+function ensureAppSettingsColumns(db) {
+  const columns = db.prepare(`PRAGMA table_info('app_settings')`).all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  if (!columnNames.has("model")) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN model TEXT NOT NULL DEFAULT 'deepseek-chat';`);
+  }
+}
 async function migrateLegacyWorkspaceFile(db) {
-  const hasWorkspace = db.prepare("SELECT value FROM workspace_state WHERE key = ?").get(WORKSPACE_KEY);
-  if (hasWorkspace) {
+  const hasProject = db.prepare("SELECT id FROM projects LIMIT 1").get();
+  if (hasProject) {
     return;
   }
   try {
     const legacyRaw = await promises.readFile(getWorkspaceFilePath(), "utf-8");
     const legacyPayload = JSON.parse(legacyRaw);
-    db.prepare(`
-      INSERT INTO workspace_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-    `).run(WORKSPACE_KEY, JSON.stringify(legacyPayload), (/* @__PURE__ */ new Date()).toISOString());
+    writeWorkspaceSnapshot(db, legacyPayload);
   } catch {
+  }
+}
+function readWorkspaceSnapshot(db) {
+  const projects = db.prepare(`
+    SELECT id, title, genre, word_count AS wordCount, last_edited AS lastEdited, cover
+    FROM projects
+    ORDER BY rowid ASC
+  `).all();
+  if (projects.length === 0) {
+    return null;
+  }
+  const worldviewEntries = db.prepare(`
+    SELECT id, type, title, content
+    FROM worldview_entries
+    ORDER BY sort_order ASC
+  `).all();
+  const characters = db.prepare(`
+    SELECT id, name, role, description, avatar, tags_json AS tagsJson
+    FROM characters
+    ORDER BY rowid ASC
+  `).all().map((row) => ({
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    description: row.description,
+    avatar: row.avatar,
+    tags: JSON.parse(row.tagsJson)
+  }));
+  const outlineItems = db.prepare(`
+    SELECT id, title, word_target AS wordTarget, conflict, summary
+    FROM outline_items
+    ORDER BY sort_order ASC
+  `).all();
+  const chapters = db.prepare(`
+    SELECT id, title, content
+    FROM chapters
+    ORDER BY sort_order ASC
+  `).all();
+  const settings = db.prepare(`
+    SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, auto_save_interval AS autoSaveInterval
+    , model
+    FROM app_settings
+    WHERE id = 1
+  `).get();
+  if (!settings) {
+    return null;
+  }
+  return {
+    theme: settings.theme,
+    selectedProjectId: settings.selectedProjectId,
+    projects,
+    worldviewEntries,
+    characters,
+    outlineItems,
+    chapters,
+    appSettings: {
+      provider: settings.provider,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      baseUrl: settings.baseUrl,
+      autoSaveInterval: settings.autoSaveInterval
+    }
+  };
+}
+function writeWorkspaceSnapshot(db, payload) {
+  db.exec("BEGIN");
+  try {
+    db.exec(`
+      DELETE FROM projects;
+      DELETE FROM worldview_entries;
+      DELETE FROM characters;
+      DELETE FROM outline_items;
+      DELETE FROM chapters;
+      DELETE FROM app_settings;
+    `);
+    const insertProject = db.prepare(`
+      INSERT INTO projects (id, title, genre, word_count, last_edited, cover)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const project of payload.projects) {
+      insertProject.run(project.id, project.title, project.genre, project.wordCount, project.lastEdited, project.cover);
+    }
+    const insertWorldview = db.prepare(`
+      INSERT INTO worldview_entries (id, type, title, content, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    payload.worldviewEntries.forEach((entry, index) => {
+      insertWorldview.run(entry.id, entry.type, entry.title, entry.content, index);
+    });
+    const insertCharacter = db.prepare(`
+      INSERT INTO characters (id, name, role, description, avatar, tags_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const character of payload.characters) {
+      insertCharacter.run(
+        character.id,
+        character.name,
+        character.role,
+        character.description,
+        character.avatar,
+        JSON.stringify(character.tags)
+      );
+    }
+    const insertOutline = db.prepare(`
+      INSERT INTO outline_items (id, title, word_target, conflict, summary, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    payload.outlineItems.forEach((item, index) => {
+      insertOutline.run(item.id, item.title, item.wordTarget, item.conflict, item.summary, index);
+    });
+    const insertChapter = db.prepare(`
+      INSERT INTO chapters (id, title, content, sort_order)
+      VALUES (?, ?, ?, ?)
+    `);
+    payload.chapters.forEach((chapter, index) => {
+      insertChapter.run(chapter.id, chapter.title, chapter.content, index);
+    });
+    db.prepare(`
+      INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, auto_save_interval)
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      payload.theme,
+      payload.selectedProjectId,
+      payload.appSettings.provider,
+      payload.appSettings.model,
+      payload.appSettings.apiKey,
+      payload.appSettings.baseUrl,
+      payload.appSettings.autoSaveInterval
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }
 function validateImportedWorkspace(payload) {
@@ -253,11 +591,25 @@ electron.ipcMain.handle("characterarc:pick-cover-image", async () => {
     dataUrl: `data:${mime};base64,${bytes.toString("base64")}`
   };
 });
+electron.ipcMain.handle("characterarc:ai-generate", async (_event, payload) => {
+  try {
+    const result = await generateAiTask(payload);
+    return {
+      success: true,
+      result
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "AI 调用失败"
+    };
+  }
+});
 electron.ipcMain.handle("characterarc:load-workspace", async () => {
   try {
     const db = await ensureWorkspaceDb();
-    const row = db.prepare("SELECT value FROM workspace_state WHERE key = ?").get(WORKSPACE_KEY);
-    if (!row) {
+    const workspace = readWorkspaceSnapshot(db);
+    if (!workspace) {
       return {
         success: false,
         payload: null
@@ -265,7 +617,7 @@ electron.ipcMain.handle("characterarc:load-workspace", async () => {
     }
     return {
       success: true,
-      payload: JSON.parse(row.value)
+      payload: workspace
     };
   } catch (error) {
     return {
@@ -278,13 +630,7 @@ electron.ipcMain.handle("characterarc:load-workspace", async () => {
 electron.ipcMain.handle("characterarc:save-workspace", async (_event, payload) => {
   try {
     const db = await ensureWorkspaceDb();
-    db.prepare(`
-      INSERT INTO workspace_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `).run(WORKSPACE_KEY, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
+    writeWorkspaceSnapshot(db, payload);
     return {
       success: true
     };

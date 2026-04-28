@@ -47,7 +47,12 @@ async function handleExportText(): Promise<void> {
 
 async function handleImportJson(): Promise<void> {
   const result = await window.characterArc.importJson()
-  if (!result.success || result.canceled || !result.payload) {
+  if (result.canceled) {
+    return
+  }
+
+  if (!result.success || !result.payload) {
+    message.error(result.error ?? '导入失败，请检查项目文件格式')
     return
   }
 

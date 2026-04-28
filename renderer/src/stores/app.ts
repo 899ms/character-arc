@@ -13,8 +13,6 @@ import type {
   WorldviewEntry
 } from '@/types/app'
 
-const STORAGE_KEY = 'characterarc-app-state'
-
 interface StoredState {
   theme: ThemeName
   selectedProjectId: string
@@ -154,61 +152,23 @@ const defaultAppSettings: AppSettings = {
 }
 
 function loadStoredState(): StoredState {
-  if (typeof window === 'undefined') {
-    return {
-      theme: 'ocean',
-      selectedProjectId: defaultProjects[0].id,
-      projects: defaultProjects,
-      worldviewEntries: defaultWorldview,
-      characters: defaultCharacters,
-      outlineItems: defaultOutline,
-      chapters: defaultChapters,
-      appSettings: defaultAppSettings
-    }
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) {
-    return {
-      theme: 'ocean',
-      selectedProjectId: defaultProjects[0].id,
-      projects: defaultProjects,
-      worldviewEntries: defaultWorldview,
-      characters: defaultCharacters,
-      outlineItems: defaultOutline,
-      chapters: defaultChapters,
-      appSettings: defaultAppSettings
-    }
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<StoredState>
-    return {
-      theme: parsed.theme ?? 'ocean',
-      selectedProjectId: parsed.selectedProjectId ?? defaultProjects[0].id,
-      projects: parsed.projects ?? defaultProjects,
-      worldviewEntries: parsed.worldviewEntries ?? defaultWorldview,
-      characters: parsed.characters ?? defaultCharacters,
-      outlineItems: parsed.outlineItems ?? defaultOutline,
-      chapters: parsed.chapters ?? defaultChapters,
-      appSettings: parsed.appSettings ?? defaultAppSettings
-    }
-  } catch {
-    return {
-      theme: 'ocean',
-      selectedProjectId: defaultProjects[0].id,
-      projects: defaultProjects,
-      worldviewEntries: defaultWorldview,
-      characters: defaultCharacters,
-      outlineItems: defaultOutline,
-      chapters: defaultChapters,
-      appSettings: defaultAppSettings
-    }
+  return {
+    theme: 'ocean',
+    selectedProjectId: defaultProjects[0].id,
+    projects: defaultProjects,
+    worldviewEntries: defaultWorldview,
+    characters: defaultCharacters,
+    outlineItems: defaultOutline,
+    chapters: defaultChapters,
+    appSettings: defaultAppSettings
   }
 }
 
 export const useAppStore = defineStore('app', () => {
   const stored = loadStoredState()
+  const hasHydrated = ref(false)
+  const persistenceError = ref<string | null>(null)
+  let saveTimer: number | null = null
   const currentView = ref<'projects' | 'wizard' | 'workbench'>('projects')
   const activePanel = ref<PanelName>('world')
   const aiVisible = ref(true)
@@ -230,6 +190,51 @@ export const useAppStore = defineStore('app', () => {
   const currentProject = computed(
     () => projects.value.find((project) => project.id === selectedProjectId.value) ?? projects.value[0]
   )
+
+  function applyWorkspaceState(payload?: Partial<StoredState> | null): void {
+    if (!payload) {
+      return
+    }
+
+    theme.value = payload.theme ?? 'ocean'
+    projects.value = payload.projects?.length ? payload.projects : defaultProjects
+    selectedProjectId.value = payload.selectedProjectId ?? projects.value[0].id
+    worldviewEntries.value = payload.worldviewEntries?.length ? payload.worldviewEntries : defaultWorldview
+    characters.value = payload.characters?.length ? payload.characters : defaultCharacters
+    outlineItems.value = payload.outlineItems?.length ? payload.outlineItems : defaultOutline
+    chapters.value = payload.chapters?.length ? payload.chapters : defaultChapters
+    appSettings.value = payload.appSettings ?? defaultAppSettings
+    selectedChapterId.value = chapters.value[0].id
+  }
+
+  function serializeWorkspaceState(): StoredState {
+    return {
+      theme: theme.value,
+      selectedProjectId: selectedProjectId.value,
+      projects: projects.value,
+      worldviewEntries: worldviewEntries.value,
+      characters: characters.value,
+      outlineItems: outlineItems.value,
+      chapters: chapters.value,
+      appSettings: appSettings.value
+    }
+  }
+
+  async function initialize(): Promise<void> {
+    const result = await window.characterArc.loadWorkspace()
+    if (result.success && result.payload) {
+      applyWorkspaceState(result.payload as Partial<StoredState>)
+      persistenceError.value = null
+    } else {
+      persistenceError.value = result.error ?? null
+    }
+    hasHydrated.value = true
+  }
+
+  async function persistWorkspace(): Promise<void> {
+    const result = await window.characterArc.saveWorkspace(serializeWorkspaceState())
+    persistenceError.value = result.success ? null : result.error ?? '保存失败'
+  }
 
   function importProjectData(payload: {
     project?: Partial<ProjectSummary>
@@ -529,23 +534,18 @@ export const useAppStore = defineStore('app', () => {
   watch(
     [theme, selectedProjectId, projects, worldviewEntries, characters, outlineItems, chapters, appSettings],
     () => {
-      if (typeof window === 'undefined') {
+      if (!hasHydrated.value) {
         return
       }
 
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          theme: theme.value,
-          selectedProjectId: selectedProjectId.value,
-          projects: projects.value,
-          worldviewEntries: worldviewEntries.value,
-          characters: characters.value,
-          outlineItems: outlineItems.value,
-          chapters: chapters.value,
-          appSettings: appSettings.value
-        } satisfies StoredState)
-      )
+      // Debounce disk writes so rapid edits don't hammer the file system on every keystroke.
+      if (saveTimer) {
+        window.clearTimeout(saveTimer)
+      }
+
+      saveTimer = window.setTimeout(() => {
+        void persistWorkspace()
+      }, 250)
     },
     { deep: true, immediate: true }
   )
@@ -566,6 +566,8 @@ export const useAppStore = defineStore('app', () => {
     currentTheme,
     currentProject,
     currentView,
+    hasHydrated,
+    initialize,
     deleteChapter,
     deleteCharacter,
     deleteOutlineItem,
@@ -596,6 +598,7 @@ export const useAppStore = defineStore('app', () => {
     updateCharacter,
     updateOutlineItem,
     updateWorldviewEntry,
-    worldviewEntries
+    worldviewEntries,
+    persistenceError
   }
 })

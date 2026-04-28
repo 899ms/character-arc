@@ -2,8 +2,18 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import './styles/global.css'
+import { useAppStore } from '@/stores/app'
 
-const app = createApp(App)
+async function bootstrap(): Promise<void> {
+  const app = createApp(App)
+  const pinia = createPinia()
 
-app.use(createPinia())
-app.mount('#app')
+  app.use(pinia)
+
+  const store = useAppStore(pinia)
+  await store.initialize()
+
+  app.mount('#app')
+}
+
+void bootstrap()

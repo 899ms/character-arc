@@ -5,6 +5,15 @@ declare global {
     characterArc: {
       platform: string
       version: string
+      loadWorkspace: () => Promise<{
+        success: boolean
+        payload?: unknown
+        error?: string
+      }>
+      saveWorkspace: (payload: unknown) => Promise<{
+        success: boolean
+        error?: string
+      }>
       exportJson: (payload: unknown) => Promise<{
         success: boolean
         canceled: boolean
@@ -19,6 +28,7 @@ declare global {
         success: boolean
         canceled: boolean
         payload?: unknown
+        error?: string
       }>
     }
   }

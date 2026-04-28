@@ -13,6 +13,7 @@ export interface ProjectSummary {
 
 export interface WorldviewEntry {
   id: string
+  type: string
   title: string
   content: string
 }

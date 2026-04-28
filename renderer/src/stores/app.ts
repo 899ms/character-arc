@@ -40,18 +40,21 @@ const defaultProjects: ProjectSummary[] = [
 const defaultWorldview: WorldviewEntry[] = [
   {
     id: 'world-1',
+    type: '地理',
     title: '时代背景',
     content:
       '2077年，第四次企业战争结束后，全球能源被三大寡头公司垄断。下层阶级只能生存在终日下着酸雨的贫民窟，依靠走私二手义体和黑市芯片维持生活。意识上传技术初现端倪，被称为“赛博飞升”。'
   },
   {
     id: 'world-2',
+    type: '法则',
     title: '核心规则：义体排异',
     content:
       '过度植入机械义体会导致神经系统崩溃，引发赛博精神病。唯一能延缓排异反应的药物“神经阻断剂”被公司严格控制，成为比货币更硬通的资源。'
   },
   {
     id: 'world-3',
+    type: '物种',
     title: '地理环境：夜城（Night City）',
     content:
       '建在填海造陆上的超级都市，分为上层的云端区和底层的霓虹区。云端区拥有人造阳光，霓虹区则充满全息广告、酸雨和九龙城寨式建筑群。'
@@ -283,6 +286,69 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  function createWorldviewEntry(payload?: Partial<WorldviewEntry>): void {
+    worldviewEntries.value.unshift({
+      id: `world-${Date.now()}`,
+      type: payload?.type?.trim() || '地理',
+      title: payload?.title?.trim() || `新设定条目 ${worldviewEntries.value.length + 1}`,
+      content:
+        payload?.content?.trim() ||
+        '这里是新的世界观设定草稿。你可以继续补充时代背景、法则机制或地理环境细节。'
+    })
+  }
+
+  function updateWorldviewEntry(entryId: string, payload: Partial<WorldviewEntry>): void {
+    worldviewEntries.value = worldviewEntries.value.map((entry) =>
+      entry.id === entryId
+        ? {
+            ...entry,
+            type: payload.type?.trim() || entry.type,
+            title: payload.title?.trim() || entry.title,
+            content: payload.content?.trim() || entry.content
+          }
+        : entry
+    )
+  }
+
+  function deleteWorldviewEntry(entryId: string): void {
+    worldviewEntries.value = worldviewEntries.value.filter((entry) => entry.id !== entryId)
+  }
+
+  function createCharacter(payload?: Partial<CharacterCard>): void {
+    characters.value.unshift({
+      id: `char-${Date.now()}`,
+      name: payload?.name?.trim() || `新角色 ${characters.value.length + 1}`,
+      role: payload?.role?.trim() || '待设定',
+      avatar: payload?.avatar || 'linear-gradient(135deg, #9be15d 0%, #00e3ae 100%)',
+      description:
+        payload?.description?.trim() ||
+        '这是一名新加入项目的角色草稿。你可以继续补充身份、背景、动机与冲突。',
+      tags:
+        payload?.tags?.length
+          ? payload.tags
+          : [{ label: '待完善', tone: 'warning' }]
+    })
+  }
+
+  function updateCharacter(characterId: string, payload: Partial<CharacterCard>): void {
+    characters.value = characters.value.map((character) =>
+      character.id === characterId
+        ? {
+            ...character,
+            name: payload.name?.trim() || character.name,
+            role: payload.role?.trim() ?? character.role,
+            avatar: payload.avatar || character.avatar,
+            description: payload.description?.trim() || character.description,
+            tags: payload.tags?.length ? payload.tags : character.tags
+          }
+        : character
+    )
+  }
+
+  function deleteCharacter(characterId: string): void {
+    characters.value = characters.value.filter((character) => character.id !== characterId)
+  }
+
   function setPanel(panel: PanelName): void {
     activePanel.value = panel
   }
@@ -303,6 +369,36 @@ export const useAppStore = defineStore('app', () => {
     chapters.value.push(newChapter)
     selectedChapterId.value = newChapter.id
     activePanel.value = 'chapters'
+  }
+
+  function createOutlineItem(payload?: Partial<OutlineItem>): void {
+    outlineItems.value.push({
+      id: `outline-${Date.now()}`,
+      title: payload?.title?.trim() || `第${outlineItems.value.length + 1}章：新剧情节点`,
+      wordTarget: payload?.wordTarget?.trim() || '预估 3000字',
+      conflict: payload?.conflict?.trim() || '新的冲突正在酝酿。',
+      summary:
+        payload?.summary?.trim() ||
+        '这里是新的剧情大纲节点草稿，可以继续补充剧情推进、角色目标和关键转折。',
+    })
+  }
+
+  function updateOutlineItem(outlineId: string, payload: Partial<OutlineItem>): void {
+    outlineItems.value = outlineItems.value.map((item) =>
+      item.id === outlineId
+        ? {
+            ...item,
+            title: payload.title?.trim() || item.title,
+            wordTarget: payload.wordTarget?.trim() || item.wordTarget,
+            conflict: payload.conflict?.trim() || item.conflict,
+            summary: payload.summary?.trim() || item.summary
+          }
+        : item
+    )
+  }
+
+  function deleteOutlineItem(outlineId: string): void {
+    outlineItems.value = outlineItems.value.filter((item) => item.id !== outlineId)
   }
 
   function deleteChapter(chapterId: string): void {
@@ -339,6 +435,18 @@ export const useAppStore = defineStore('app', () => {
     }
 
     chapter.content = value
+  }
+
+  function updateChapter(chapterId: string, payload: Partial<ChapterDraft>): void {
+    chapters.value = chapters.value.map((chapter) =>
+      chapter.id === chapterId
+        ? {
+            ...chapter,
+            title: payload.title?.trim() || chapter.title,
+            content: payload.content !== undefined ? payload.content : chapter.content
+          }
+        : chapter
+    )
   }
 
   function toggleAi(): void {
@@ -407,12 +515,18 @@ export const useAppStore = defineStore('app', () => {
     characters,
     closeWizard,
     createProject,
+    createCharacter,
+    createOutlineItem,
+    createWorldviewEntry,
     createChapter,
     currentTheme,
     currentProject,
     currentView,
     deleteChapter,
+    deleteCharacter,
+    deleteOutlineItem,
     deleteProject,
+    deleteWorldviewEntry,
     insertIntoChapter,
     messages,
     openProject,
@@ -430,8 +544,12 @@ export const useAppStore = defineStore('app', () => {
     theme,
     toggleAi,
     updateAppSetting,
+    updateChapter,
     updateChapterContent,
     updateChapterTitle,
+    updateCharacter,
+    updateOutlineItem,
+    updateWorldviewEntry,
     worldviewEntries
   }
 })

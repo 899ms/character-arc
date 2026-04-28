@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Globe2, PenTool, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { FilePenLine, Globe2, PenTool, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
+import { NButton, NForm, NFormItem, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import type { ChapterDraft } from '@/types/app'
 
 const props = defineProps<{
   searchQuery?: string
 }>()
 
 const appStore = useAppStore()
+const dialog = useDialog()
+const message = useMessage()
 const activeHelper = ref<'polish' | 'world' | null>(null)
 const saveState = ref<'saved' | 'saving'>('saved')
 const polishPrompt = ref('优化当前段落的氛围感和节奏。')
+const editorVisible = ref(false)
+const chapterForm = reactive({
+  title: ''
+})
 let saveTimer: number | null = null
 
 const currentWordCount = computed(() => {
@@ -46,6 +54,52 @@ const filteredChapters = computed(() => {
 
 function toggleHelper(panel: 'polish' | 'world'): void {
   activeHelper.value = activeHelper.value === panel ? null : panel
+}
+
+function requestDeleteChapter(): void {
+  const chapter = appStore.selectedChapter
+  if (!chapter || appStore.chapters.length <= 1) {
+    return
+  }
+
+  dialog.warning({
+    title: '确认删除章节',
+    content: `确定要删除“${chapter.title}”吗？删除后当前章节草稿将无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteChapter(chapter.id)
+    }
+  })
+}
+
+function openChapterMetaEditor(chapter?: ChapterDraft | null): void {
+  if (!chapter) {
+    return
+  }
+
+  chapterForm.title = chapter.title
+  editorVisible.value = true
+}
+
+function submitChapterMeta(): void {
+  const chapter = appStore.selectedChapter
+  if (!chapter) {
+    return
+  }
+
+  if (!chapterForm.title.trim()) {
+    message.warning('请先填写章节标题')
+    return
+  }
+
+  appStore.updateChapter(chapter.id, {
+    title: chapterForm.title
+  })
+  editorVisible.value = false
+  message.success('章节信息已更新')
 }
 
 watch(
@@ -109,6 +163,9 @@ onBeforeUnmount(() => {
 
       <section class="editor-shell">
         <div class="editor-floating-actions">
+          <button class="tool-badge neutral" title="编辑章节信息" @click="openChapterMetaEditor(appStore.selectedChapter)">
+            <FilePenLine :size="16" />
+          </button>
           <button
             class="tool-badge"
             :class="{ active: activeHelper === 'polish' }"
@@ -125,7 +182,12 @@ onBeforeUnmount(() => {
           >
             <Globe2 :size="16" />
           </button>
-          <button class="tool-badge neutral danger" title="删除章节" @click="appStore.deleteChapter(appStore.selectedChapterId)">
+          <button
+            class="tool-badge neutral danger"
+            :disabled="appStore.chapters.length <= 1"
+            title="删除章节"
+            @click="requestDeleteChapter"
+          >
             <Trash2 :size="16" />
           </button>
         </div>
@@ -172,6 +234,28 @@ onBeforeUnmount(() => {
     <div v-if="filteredChapters.length === 0" class="empty-state">
       没有匹配“{{ props.searchQuery }}”的章节内容。
     </div>
+
+    <n-modal
+      :show="editorVisible"
+      preset="card"
+      class="arc-editor-modal"
+      title="编辑章节信息"
+      :bordered="false"
+      @close="editorVisible = false"
+    >
+      <n-form label-placement="top">
+        <n-form-item label="章节标题">
+          <n-input v-model:value="chapterForm.title" placeholder="例如：第4章：夜城回响" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <div class="arc-modal-actions">
+          <n-button round strong @click="editorVisible = false">取消</n-button>
+          <n-button type="primary" round strong @click="submitChapterMeta">保存修改</n-button>
+        </div>
+      </template>
+    </n-modal>
   </section>
 </template>
 
@@ -332,6 +416,16 @@ onBeforeUnmount(() => {
 .tool-badge.neutral.active {
   background: color-mix(in srgb, var(--arc-primary) 8%, white);
   color: var(--arc-primary);
+}
+
+.tool-badge:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool-badge:disabled:hover {
+  transform: none;
+  background: #f9fafb;
 }
 
 .tool-badge.danger:hover {

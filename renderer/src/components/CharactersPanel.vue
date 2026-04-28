@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Plus, Search, Sparkles } from 'lucide-vue-next'
-import { NTag } from 'naive-ui'
+import { computed, reactive, ref } from 'vue'
+import { MoreVertical, Plus, Search, Sparkles } from 'lucide-vue-next'
+import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NTag, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import type { CharacterCard } from '@/types/app'
+import type { DropdownOption } from 'naive-ui'
 
 const appStore = useAppStore()
+const dialog = useDialog()
 const keyword = ref('')
 
 const filteredCharacters = computed(() => {
@@ -24,6 +27,20 @@ const filteredCharacters = computed(() => {
 const props = defineProps<{
   searchQuery?: string
 }>()
+const message = useMessage()
+const isGenerating = ref(false)
+const editorVisible = ref(false)
+const editingCharacterId = ref<string | null>(null)
+const form = reactive({
+  name: '',
+  role: '',
+  description: '',
+  tags: [] as string[]
+})
+const menuOptions: DropdownOption[] = [
+  { key: 'edit', label: '编辑角色' },
+  { key: 'delete', label: '删除角色' }
+]
 
 function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default' | 'error' | 'success' | 'warning' {
   switch (tone) {
@@ -36,6 +53,90 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
     default:
       return 'default'
   }
+}
+
+function handleCreateCharacter(): void {
+  editingCharacterId.value = null
+  form.name = ''
+  form.role = ''
+  form.description = ''
+  form.tags = []
+  editorVisible.value = true
+}
+
+function handleGenerateCharacter(): void {
+  if (isGenerating.value) {
+    return
+  }
+
+  isGenerating.value = true
+
+  window.setTimeout(() => {
+    appStore.createCharacter({
+      name: '苏澜',
+      role: '情报中间人',
+      avatar: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      description: '活跃在夜城灰色地带的信息贩子，擅长用碎片情报操纵局势，表面轻佻，实则极度谨慎。',
+      tags: [
+        { label: '情报中间人' },
+        { label: '危险盟友', tone: 'danger' }
+      ]
+    })
+    isGenerating.value = false
+    message.success('AI 已生成新的角色草稿')
+  }, 700)
+}
+
+function openEditor(character?: CharacterCard): void {
+  editingCharacterId.value = character?.id ?? null
+  form.name = character?.name ?? ''
+  form.role = character?.role ?? ''
+  form.description = character?.description ?? ''
+  form.tags = character?.tags.map((tag) => tag.label) ?? []
+  editorVisible.value = true
+}
+
+function submitCharacter(): void {
+  if (!form.name.trim() || !form.description.trim()) {
+    message.warning('请先填写角色名称和简介')
+    return
+  }
+
+  if (editingCharacterId.value) {
+    appStore.updateCharacter(editingCharacterId.value, {
+      ...form,
+      tags: form.tags.map((label) => ({ label }))
+    })
+    message.success('角色信息已更新')
+  } else {
+    appStore.createCharacter({
+      ...form,
+      tags: form.tags.map((label) => ({ label }))
+    })
+    message.success('已新增角色草稿')
+  }
+
+  editorVisible.value = false
+}
+
+function handleMenuSelect(action: string | number, character: CharacterCard): void {
+  if (action === 'edit') {
+    openEditor(character)
+    return
+  }
+
+  dialog.warning({
+    title: '确认删除角色',
+    content: `确定要删除“${character.name}”吗？删除后角色资料将无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteCharacter(character.id)
+      message.success('角色已删除')
+    }
+  })
 }
 </script>
 
@@ -51,11 +152,11 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
           <Search :size="16" />
           <input v-model="keyword" type="text" placeholder="搜索角色..." />
         </div>
-        <button class="soft-button">
+        <button class="soft-button" :disabled="isGenerating" @click="handleGenerateCharacter">
           <Sparkles :size="16" />
-          <span>AI生成角色</span>
+          <span>{{ isGenerating ? '生成中...' : 'AI生成角色' }}</span>
         </button>
-        <button class="primary-button">
+        <button class="primary-button" @click="handleCreateCharacter">
           <Plus :size="16" />
           <span>新建</span>
         </button>
@@ -63,10 +164,18 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
     </div>
 
     <div class="character-grid">
-      <article v-for="character in filteredCharacters" :key="character.id" class="character-card">
+      <!-- Direct card click keeps high-frequency editing faster than routing every change through the overflow menu. -->
+      <article v-for="character in filteredCharacters" :key="character.id" class="character-card" @click="openEditor(character)">
         <div class="avatar" :style="{ background: character.avatar }"></div>
         <div class="character-info">
-          <h3>{{ character.name }}<span v-if="character.role"> ({{ character.role }})</span></h3>
+          <div class="character-head">
+            <h3>{{ character.name }}<span v-if="character.role"> ({{ character.role }})</span></h3>
+            <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key) => handleMenuSelect(key, character)">
+              <button class="more-button" @click.stop>
+                <MoreVertical :size="14" />
+              </button>
+            </n-dropdown>
+          </div>
           <div class="tag-row">
             <n-tag
               v-for="tag in character.tags"
@@ -86,6 +195,44 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
     <div v-if="filteredCharacters.length === 0" class="empty-state">
       没有匹配当前搜索条件的角色。
     </div>
+
+    <n-modal
+      :show="editorVisible"
+      preset="card"
+      class="arc-editor-modal"
+      :title="editingCharacterId ? '编辑角色' : '新建角色'"
+      :bordered="false"
+      @close="editorVisible = false"
+    >
+      <n-form label-placement="top">
+        <n-form-item label="角色名称">
+          <n-input v-model:value="form.name" placeholder="例如：李雷 / 艾达" />
+        </n-form-item>
+        <n-form-item label="角色定位">
+          <n-input v-model:value="form.role" placeholder="例如：男主 / 情报中间人" />
+        </n-form-item>
+        <n-form-item label="角色简介">
+          <n-input
+            v-model:value="form.description"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 7 }"
+            placeholder="补充角色背景、动机和冲突..."
+          />
+        </n-form-item>
+        <n-form-item label="角色标签">
+          <n-dynamic-tags v-model:value="form.tags" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <div class="arc-modal-actions">
+          <n-button round strong @click="editorVisible = false">取消</n-button>
+          <n-button type="primary" round strong @click="submitCharacter">
+            {{ editingCharacterId ? '保存修改' : '创建角色' }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
   </section>
 </template>
 
@@ -163,6 +310,12 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
   padding: 12px 18px;
 }
 
+.soft-button:disabled,
+.primary-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .soft-button {
   background: #f5f5f7;
   color: #1d1d1f;
@@ -202,6 +355,10 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.06);
 }
 
+.character-card:hover h3 {
+  color: var(--arc-primary);
+}
+
 .avatar {
   width: 64px;
   height: 64px;
@@ -209,9 +366,34 @@ function tagType(tone?: 'default' | 'danger' | 'success' | 'warning'): 'default'
   border-radius: 999px;
 }
 
+.character-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .character-info h3 {
   margin: 0 0 4px;
   font-size: 16px;
+}
+
+.more-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #c4cad4;
+  cursor: pointer;
+}
+
+.more-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #6b7280;
 }
 
 .tag-row {

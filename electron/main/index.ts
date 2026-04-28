@@ -152,6 +152,15 @@ function validateImportedWorkspace(payload: unknown): { valid: true } | { valid:
   return { valid: true }
 }
 
+function resolveImageMime(filePath: string): string {
+  const lower = filePath.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return 'application/octet-stream'
+}
+
 ipcMain.handle('characterarc:export-json', async (_event, payload: unknown) => {
   const window = BrowserWindow.getFocusedWindow()
   if (!window) {
@@ -266,6 +275,35 @@ ipcMain.handle('characterarc:import-json', async () => {
     success: true,
     canceled: false,
     payload: parsed
+  }
+})
+
+ipcMain.handle('characterarc:pick-cover-image', async () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (!window) {
+    return { success: false, canceled: true }
+  }
+
+  const result = await dialog.showOpenDialog(window, {
+    title: '选择项目封面',
+    properties: ['openFile'],
+    filters: [
+      { name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }
+    ]
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true }
+  }
+
+  const filePath = result.filePaths[0]
+  const bytes = await readFile(filePath)
+  const mime = resolveImageMime(filePath)
+  return {
+    success: true,
+    canceled: false,
+    filePath,
+    dataUrl: `data:${mime};base64,${bytes.toString('base64')}`
   }
 })
 

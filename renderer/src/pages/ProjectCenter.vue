@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref } from 'vue'
-import { BookOpen, Clock, FilePenLine, MoreHorizontal, Plus, Trash2 } from 'lucide-vue-next'
+import { BookOpen, Clock, FilePenLine, ImagePlus, MoreHorizontal, Plus, Trash2, X } from 'lucide-vue-next'
 import { NButton, NDropdown, NForm, NFormItem, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { ProjectSummary } from '@/types/app'
@@ -13,7 +13,8 @@ const editingProjectId = ref<string | null>(null)
 const form = reactive({
   title: '',
   genre: '',
-  wordCount: ''
+  wordCount: '',
+  cover: ''
 })
 
 const canDeleteProject = computed(() => appStore.projects.length > 1)
@@ -76,6 +77,7 @@ function openProjectEditor(project?: ProjectSummary): void {
   form.title = project?.title ?? ''
   form.genre = project?.genre ?? ''
   form.wordCount = project?.wordCount ?? ''
+  form.cover = project?.cover ?? ''
   editorVisible.value = true
 }
 
@@ -92,6 +94,21 @@ function submitProject(): void {
   appStore.updateProject(editingProjectId.value, form)
   editorVisible.value = false
   message.success('项目信息已更新')
+}
+
+async function handlePickCover(): Promise<void> {
+  const result = await window.characterArc.pickCoverImage()
+  if (!result.success || result.canceled || !result.dataUrl) {
+    return
+  }
+
+  // Keep the first-stage cover workflow simple by storing the selected image as a data URL.
+  form.cover = result.dataUrl
+  message.success('项目封面已更新')
+}
+
+function clearCover(): void {
+  form.cover = ''
 }
 
 function requestDeleteProject(projectId: string): void {
@@ -185,6 +202,30 @@ function requestDeleteProject(projectId: string): void {
       @close="editorVisible = false"
     >
       <n-form label-placement="top">
+        <n-form-item label="项目封面">
+          <div class="cover-editor">
+            <div
+              class="cover-preview"
+              :style="{ background: form.cover || 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)' }"
+            >
+              <BookOpen :size="28" />
+            </div>
+            <div class="cover-actions">
+              <n-button round strong @click="handlePickCover">
+                <template #icon>
+                  <ImagePlus :size="16" />
+                </template>
+                选择本地图片
+              </n-button>
+              <n-button round strong secondary :disabled="!form.cover" @click="clearCover">
+                <template #icon>
+                  <X :size="16" />
+                </template>
+                清除封面
+              </n-button>
+            </div>
+          </div>
+        </n-form-item>
         <n-form-item label="项目标题">
           <n-input v-model:value="form.title" placeholder="例如：赛博飞升指南" />
         </n-form-item>
@@ -378,6 +419,32 @@ function requestDeleteProject(projectId: string): void {
   color: #dc2626;
 }
 
+.cover-editor {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cover-preview {
+  display: inline-flex;
+  width: 110px;
+  height: 110px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  color: white;
+  flex-shrink: 0;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  background-size: cover !important;
+  background-position: center !important;
+}
+
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .project-genre {
   display: inline-flex;
   align-items: center;
@@ -447,6 +514,11 @@ function requestDeleteProject(projectId: string): void {
   .meta-row {
     flex-wrap: wrap;
     gap: 10px 18px;
+  }
+
+  .cover-editor {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

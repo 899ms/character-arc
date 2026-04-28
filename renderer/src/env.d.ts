@@ -14,6 +14,12 @@ declare global {
         success: boolean
         error?: string
       }>
+      pickCoverImage: () => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        dataUrl?: string
+      }>
       exportJson: (payload: unknown) => Promise<{
         success: boolean
         canceled: boolean

@@ -273,6 +273,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .rich-editor-shell {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid #d4d4d8;
   border-radius: 6px;
   background: #ffffff;
@@ -363,11 +368,15 @@ onBeforeUnmount(() => {
 }
 
 .rich-editor-content {
-  min-height: clamp(360px, 48vh, 560px);
+  /* Lock the editor viewport to the available column height so long chapters scroll internally. */
+  min-height: 0;
+  height: 100%;
+  flex: 1;
 }
 
 .rich-editor-content :deep(.chapter-rich-text) {
-  min-height: clamp(360px, 48vh, 560px);
+  height: 100%;
+  min-height: 0;
   color: #333336;
   font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 16px;

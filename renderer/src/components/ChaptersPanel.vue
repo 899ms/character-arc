@@ -948,6 +948,8 @@ onBeforeUnmount(() => {
   --chapter-muted: #667085;
   --chapter-ink: #18212f;
   --chapter-accent-soft: color-mix(in srgb, var(--arc-primary) 8%, white);
+  display: flex;
+  min-height: 0;
   max-width: none;
   width: 100%;
   margin: 0 auto;
@@ -1013,7 +1015,9 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 304px minmax(0, 1fr);
   gap: 0;
-  min-height: clamp(640px, 72vh, 860px);
+  min-height: 0;
+  height: 100%;
+  flex: 1;
   align-items: stretch;
   border: 1px solid var(--chapter-border-strong);
   border-radius: 28px;
@@ -1027,6 +1031,7 @@ onBeforeUnmount(() => {
 
 .chapter-sidebar {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--chapter-border-strong);
   background:
@@ -1295,7 +1300,6 @@ onBeforeUnmount(() => {
 
 .chapters-shell.reading-mode {
   grid-template-columns: minmax(0, 1fr);
-  min-height: clamp(720px, 82vh, 1080px);
   background:
     radial-gradient(circle at top, rgba(255, 255, 255, 0.96), rgba(244, 247, 252, 0.94) 42%, rgba(236, 241, 247, 0.98));
 }
@@ -1303,6 +1307,7 @@ onBeforeUnmount(() => {
 .editor-shell {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(246, 249, 253, 0.94));
@@ -1972,7 +1977,7 @@ onBeforeUnmount(() => {
 .editor-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(248px, 300px);
-  align-items: start;
+  align-items: stretch;
   gap: 18px;
   flex: 1;
   min-height: 0;
@@ -1980,6 +1985,8 @@ onBeforeUnmount(() => {
 }
 
 .editor-column {
+  display: flex;
+  min-height: 0;
   min-width: 0;
   margin: 0;
 }

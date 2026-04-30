@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
 import { NButton, NDropdown, NForm, NFormItem, NInput, NModal, NSelect, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
 import type { DropdownOption } from 'naive-ui'
 import type { WorldviewEntry } from '@/types/app'
@@ -78,7 +79,7 @@ async function handleGenerateEntry(): Promise<void> {
   isGenerating.value = true
 
   try {
-    const result = await window.characterArc.generateAi({
+    const result = await window.characterArc.generateAi(toIpcPayload({
       task: 'worldview-entry',
       settings: appStore.appSettings,
       context: {
@@ -88,7 +89,7 @@ async function handleGenerateEntry(): Promise<void> {
         writingStylePrompt: writingStyle.value.prompt,
         worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title)
       }
-    })
+    }))
 
     if (!result.success || !result.result) {
       throw new Error(result.error ?? 'AI 扩写失败，请检查模型配置')

@@ -11,6 +11,7 @@ import {
 } from 'lucide-vue-next'
 import { NCheckbox, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import { createProjectWorkspaceSeed, type ProjectBootstrapResult } from '@/features/wizard/projectSeed'
 
 const appStore = useAppStore()
@@ -92,7 +93,7 @@ async function goNext(): Promise<void> {
 
     // 仅在用户启用自动生成时调用 AI，生成初始世界观与大纲
     if (formData.shouldGenerate) {
-      const result = await window.characterArc.generateAi({
+      const result = await window.characterArc.generateAi(toIpcPayload({
         task: 'project-bootstrap',
         settings: appStore.appSettings,
         context: {
@@ -101,7 +102,7 @@ async function goNext(): Promise<void> {
           projectWordTarget: formData.targetWordCount,
           projectPremise: formData.premise
         }
-      })
+      }))
 
       if (!result.success || !result.result) {
         throw new Error(result.error ?? 'AI 初始化项目失败')

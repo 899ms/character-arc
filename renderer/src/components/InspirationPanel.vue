@@ -5,6 +5,7 @@ import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NTa
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
 import { useAppStore } from '@/stores/app'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import type { DropdownOption } from 'naive-ui'
 import type { InspirationEntry } from '@/types/app'
 
@@ -115,7 +116,7 @@ async function handleGeneratePack(): Promise<void> {
   isGenerating.value = true
 
   try {
-    const result = await window.characterArc.generateAi({
+    const result = await window.characterArc.generateAi(toIpcPayload({
       task: 'inspiration-pack',
       settings: appStore.appSettings,
       context: {
@@ -135,7 +136,7 @@ async function handleGeneratePack(): Promise<void> {
         organizationMemberships: appStore.organizationMemberships,
         outlineItems: appStore.outlineItems
       }
-    })
+    }))
 
     if (!result.success || !result.result) {
       throw new Error(result.error ?? 'AI 生成灵感失败，请检查模型配置')

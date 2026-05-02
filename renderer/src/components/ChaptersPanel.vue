@@ -1148,20 +1148,20 @@ onBeforeUnmount(() => {
                         >
                           {{ isGeneratingOutlineChain ? '生成中...' : '生成后续剧情链' }}
                         </button>
-                        <button class="action-btn ghost" @click="openChapterMetaEditor(appStore.selectedChapter)">
+<!--                        <button class="action-btn ghost" @click="openChapterMetaEditor(appStore.selectedChapter)">
                           调整节点绑定
-                        </button>
+                        </button>-->
                       </div>
                     </div>
 
-                    <div class="side-card summary-card">
+<!--                    <div class="side-card summary-card">
                       <div class="side-card-head">
                         <span class="side-card-label">本章定位</span>
                       </div>
                       <p>{{ currentSummaryText }}</p>
-                    </div>
+                    </div>-->
 
-                    <div class="side-card inspiration-card">
+<!--                    <div class="side-card inspiration-card">
                       <div class="side-card-head">
                         <div class="side-card-head-stack">
                           <span class="side-card-label">章节灵感</span>
@@ -1207,7 +1207,7 @@ onBeforeUnmount(() => {
                       <div v-else class="inspiration-empty">
                         <p>当前还没有与本章联动的灵感卡，可以先生成场景、转折或人物动机。</p>
                       </div>
-                    </div>
+                    </div>-->
                   </div>
                 </aside>
               </div>
@@ -1332,20 +1332,20 @@ onBeforeUnmount(() => {
             >
               {{ isGeneratingOutlineChain ? '生成中...' : '生成后续剧情链' }}
             </button>
-            <button class="action-btn ghost" @click="openChapterMetaEditor(appStore.selectedChapter)">
+<!--            <button class="action-btn ghost" @click="openChapterMetaEditor(appStore.selectedChapter)">
               调整节点绑定
-            </button>
+            </button>-->
           </div>
         </div>
 
-        <div class="side-card summary-card">
+<!--        <div class="side-card summary-card">
           <div class="side-card-head">
             <span class="side-card-label">本章定位</span>
           </div>
           <p>{{ currentSummaryText }}</p>
-        </div>
+        </div>-->
 
-        <div class="side-card inspiration-card">
+<!--        <div class="side-card inspiration-card">
           <div class="side-card-head">
             <div class="side-card-head-stack">
               <span class="side-card-label">章节灵感</span>
@@ -1391,7 +1391,7 @@ onBeforeUnmount(() => {
           <div v-else class="inspiration-empty">
             <p>当前还没有与本章联动的灵感卡，可以先生成场景、转折或人物动机。</p>
           </div>
-        </div>
+        </div>-->
       </div>
     </n-modal>
 

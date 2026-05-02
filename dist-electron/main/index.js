@@ -24,6 +24,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 const electron = require("electron");
 const node_path = require("node:path");
 const promises = require("node:fs/promises");
+const node_fs = require("node:fs");
 const node_sqlite = require("node:sqlite");
 const node_crypto = require("node:crypto");
 const DEFAULT_STRATEGY = {
@@ -2247,6 +2248,17 @@ function getMainWindowMetrics() {
 function getWindowSearch(kind) {
   return kind === "assistant" ? "?window=assistant" : "";
 }
+function resolveWindowIconPath() {
+  const packagedIconPath = node_path.join(process.resourcesPath, "icon.png");
+  if (node_fs.existsSync(packagedIconPath)) {
+    return packagedIconPath;
+  }
+  const localIconPath = node_path.join(process.cwd(), "resources/icon.png");
+  if (node_fs.existsSync(localIconPath)) {
+    return localIconPath;
+  }
+  return void 0;
+}
 function loadRendererWindow(window, kind) {
   const search = getWindowSearch(kind);
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -2284,11 +2296,13 @@ function emitAssistantWindowVisibility(visible) {
 }
 function createMainWindow() {
   const { width, height, minWidth, minHeight, compactScreen } = getMainWindowMetrics();
+  const windowIcon = resolveWindowIconPath();
   const window = new electron.BrowserWindow({
     width,
     height,
     minWidth,
     minHeight,
+    icon: windowIcon,
     autoHideMenuBar: true,
     title: `弧光 v${electron.app.getVersion()}`,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
@@ -2341,11 +2355,13 @@ function createAssistantWindow() {
   const parentBounds = mainWindow?.getBounds();
   const assistantX = parentBounds ? parentBounds.x + parentBounds.width - ASSISTANT_WINDOW_WIDTH - 32 : void 0;
   const assistantY = parentBounds ? parentBounds.y + 44 : void 0;
+  const windowIcon = resolveWindowIconPath();
   const window = new electron.BrowserWindow({
     width: ASSISTANT_WINDOW_WIDTH,
     height: ASSISTANT_WINDOW_HEIGHT,
     minWidth: ASSISTANT_WINDOW_MIN_WIDTH,
     minHeight: ASSISTANT_WINDOW_MIN_HEIGHT,
+    icon: windowIcon,
     x: assistantX,
     y: assistantY,
     parent: mainWindow ?? void 0,
@@ -2621,12 +2637,14 @@ async function ensureWorkspaceDb() {
     CREATE TABLE IF NOT EXISTS workflow_documents (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
+      volume_id TEXT NOT NULL DEFAULT 'volume-legacy-default',
       doc_key TEXT NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       sort_order INTEGER NOT NULL,
-      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+      FOREIGN KEY (volume_id) REFERENCES outline_volumes (id) ON DELETE CASCADE
     ) STRICT;
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -2660,6 +2678,7 @@ async function ensureWorkspaceDb() {
   ensureProjectColumns(workspaceDb);
   ensureProjectScopedColumns(workspaceDb);
   ensureVolumeColumns(workspaceDb);
+  ensureWorkflowDocumentColumns(workspaceDb);
   await migrateLegacyWorkspaceFile(workspaceDb);
   return workspaceDb;
 }
@@ -2714,6 +2733,31 @@ function ensureVolumeColumns(db) {
   if (!outlineColumnNames.has("status")) {
     db.exec(`ALTER TABLE outline_items ADD COLUMN status TEXT NOT NULL DEFAULT 'planned';`);
   }
+}
+function ensureWorkflowDocumentColumns(db) {
+  const columns = db.prepare(`PRAGMA table_info('workflow_documents')`).all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  if (!columnNames.has("project_id")) {
+    const defaultProjectId = db.prepare(`SELECT selected_project_id AS projectId FROM app_settings WHERE id = 1`).get()?.projectId || db.prepare(`SELECT id FROM projects ORDER BY rowid ASC LIMIT 1`).get()?.id || "project-1";
+    db.exec(`ALTER TABLE workflow_documents ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}';`);
+  }
+  if (!columnNames.has("volume_id")) {
+    db.exec(`ALTER TABLE workflow_documents ADD COLUMN volume_id TEXT NOT NULL DEFAULT '';`);
+  }
+  db.exec(`
+    UPDATE workflow_documents
+    SET volume_id = COALESCE(
+      (
+        SELECT id
+        FROM outline_volumes
+        WHERE outline_volumes.project_id = workflow_documents.project_id
+        ORDER BY sort_order ASC, rowid ASC
+        LIMIT 1
+      ),
+      'volume-legacy-default'
+    )
+    WHERE COALESCE(volume_id, '') = '';
+  `);
 }
 async function migrateLegacyWorkspaceFile(db) {
   const hasProject = db.prepare("SELECT id FROM projects LIMIT 1").get();
@@ -3016,7 +3060,13 @@ function readWorkspaceSnapshot(db) {
     SELECT project_id AS projectId, id, title, word_target AS wordTarget, summary
     FROM outline_volumes
     ORDER BY project_id ASC, sort_order ASC
-  `).all();
+  `).all().map((row) => ({
+    projectId: row.projectId,
+    id: row.id,
+    title: row.title,
+    wordTarget: row.wordTarget,
+    summary: row.summary
+  }));
   const outlineItems = db.prepare(`
     SELECT project_id AS projectId, volume_id AS volumeId, id, title, word_target AS wordTarget, conflict, summary, status, sort_order AS sortOrder
     FROM outline_items
@@ -3038,9 +3088,9 @@ function readWorkspaceSnapshot(db) {
     ORDER BY project_id ASC, sort_order ASC
   `).all();
   const workflowDocuments = db.prepare(`
-    SELECT project_id AS projectId, doc_key AS docKey, title, content, updated_at AS updatedAt
+    SELECT project_id AS projectId, volume_id AS volumeId, doc_key AS docKey, title, content, updated_at AS updatedAt
     FROM workflow_documents
-    ORDER BY project_id ASC, sort_order ASC
+    ORDER BY project_id ASC, volume_id ASC, sort_order ASC
   `).all();
   const settings = db.prepare(`
     SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, auto_save_interval AS autoSaveInterval
@@ -3061,15 +3111,18 @@ function readWorkspaceSnapshot(db) {
         characterRelationships: characterRelationships.filter((entry) => entry.projectId === project.id).map(({ projectId: _projectId, ...entry }) => entry),
         organizationMemberships: organizationMemberships.filter((entry) => entry.projectId === project.id).map(({ projectId: _projectId, ...entry }) => entry),
         inspirationEntries: inspirationEntries.filter((entry) => entry.projectId === project.id).map(({ projectId: _projectId, ...entry }) => entry),
-        outlineVolumes: outlineVolumes.filter((volume) => volume.projectId === project.id).map(({ projectId: _projectId, ...volume }) => volume),
+        outlineVolumes: outlineVolumes.filter((volume) => volume.projectId === project.id).map(({ projectId: _projectId, ...volume }) => ({
+          ...volume,
+          workflowDocuments: workflowDocuments.filter((document) => document.projectId === project.id && document.volumeId === volume.id).map(({ projectId: _docProjectId, volumeId: _docVolumeId, docKey: _docKey, ...document }) => ({
+            ...document,
+            key: _docKey
+          }))
+        })),
         outlineItems: outlineItems.filter((item) => item.projectId === project.id).map(({ projectId: _projectId, ...item }) => item),
         chapters: chapters.filter((chapter) => chapter.projectId === project.id).map(({ projectId: _projectId, ...chapter }) => chapter),
         chapterVersions: chapterVersions.filter((version) => version.projectId === project.id).map(({ projectId: _projectId, ...version }) => version),
         messages: messages.filter((message) => message.projectId === project.id).map(({ projectId: _projectId, ...message }) => message),
-        workflowDocuments: workflowDocuments.filter((document) => document.projectId === project.id).map(({ projectId: _projectId, docKey: _docKey, ...document }) => ({
-          ...document,
-          key: _docKey
-        }))
+        workflowDocuments: []
       }
     ])
   );
@@ -3176,8 +3229,8 @@ function writeWorkspaceSnapshot(db, payload) {
       VALUES (?, ?, ?, ?, ?)
     `);
     const insertWorkflowDocument = db.prepare(`
-      INSERT INTO workflow_documents (id, project_id, doc_key, title, content, updated_at, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO workflow_documents (id, project_id, volume_id, doc_key, title, content, updated_at, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const project of payload.projects) {
       const workspace = payload.workspaces[project.id] ?? {
@@ -3316,17 +3369,32 @@ function writeWorkspaceSnapshot(db, payload) {
       workspace.messages.forEach((message, index) => {
         insertMessage.run(message.id, project.id, message.role, message.content, index);
       });
-      workspace.workflowDocuments.forEach((document, index) => {
-        insertWorkflowDocument.run(
-          `${project.id}-${document.key}`,
-          project.id,
-          document.key,
-          document.title,
-          document.content,
-          document.updatedAt,
-          index
-        );
-      });
+      const volumeWorkflowSources = workspace.outlineVolumes.flatMap(
+        (volume) => (volume.workflowDocuments ?? []).map((document, index) => ({
+          volumeId: volume.id,
+          document,
+          sortOrder: index
+        }))
+      ) || [];
+      const fallbackWorkflowSources = volumeWorkflowSources.length === 0 && workspace.outlineVolumes[0] ? workspace.workflowDocuments.map((document, index) => ({
+        volumeId: workspace.outlineVolumes[0].id,
+        document,
+        sortOrder: index
+      })) : [];
+      (volumeWorkflowSources.length > 0 ? volumeWorkflowSources : fallbackWorkflowSources).forEach(
+        ({ volumeId, document, sortOrder }) => {
+          insertWorkflowDocument.run(
+            `${project.id}-${volumeId}-${document.key}`,
+            project.id,
+            volumeId,
+            document.key,
+            document.title,
+            document.content,
+            document.updatedAt,
+            sortOrder
+          );
+        }
+      );
     }
     db.prepare(`
       INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, auto_save_interval, ui_scale)

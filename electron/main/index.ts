@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { generateAiTask, streamAiTask, testAiConnection, type AiTaskPayload } from './ai'
@@ -86,6 +87,21 @@ function getWindowSearch(kind: AppWindowKind): string {
   return kind === 'assistant' ? '?window=assistant' : ''
 }
 
+/** 解析窗口图标路径：优先使用打包后的 resources 目录，开发模式回退到项目根目录的 resources。 */
+function resolveWindowIconPath(): string | undefined {
+  const packagedIconPath = join(process.resourcesPath, 'icon.png')
+  if (existsSync(packagedIconPath)) {
+    return packagedIconPath
+  }
+
+  const localIconPath = join(process.cwd(), 'resources/icon.png')
+  if (existsSync(localIconPath)) {
+    return localIconPath
+  }
+
+  return undefined
+}
+
 /** 加载渲染进程页面，开发模式下打开 DevTools，生产模式下加载打包后的 index.html */
 function loadRendererWindow(window: BrowserWindow, kind: AppWindowKind): void {
   const search = getWindowSearch(kind)
@@ -137,11 +153,13 @@ function emitAssistantWindowVisibility(visible: boolean): void {
 /** 创建主窗口：自适应屏幕尺寸、配置标题栏样式、设置安全的 preload 脚本 */
 function createMainWindow(): BrowserWindow {
   const { width, height, minWidth, minHeight, compactScreen } = getMainWindowMetrics()
+  const windowIcon = resolveWindowIconPath()
   const window = new BrowserWindow({
     width,
     height,
     minWidth,
     minHeight,
+    icon: windowIcon,
     autoHideMenuBar: true,
     title: `弧光 v${app.getVersion()}`,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -208,12 +226,14 @@ function createAssistantWindow(): BrowserWindow {
   const parentBounds = mainWindow?.getBounds()
   const assistantX = parentBounds ? parentBounds.x + parentBounds.width - ASSISTANT_WINDOW_WIDTH - 32 : undefined
   const assistantY = parentBounds ? parentBounds.y + 44 : undefined
+  const windowIcon = resolveWindowIconPath()
 
   const window = new BrowserWindow({
     width: ASSISTANT_WINDOW_WIDTH,
     height: ASSISTANT_WINDOW_HEIGHT,
     minWidth: ASSISTANT_WINDOW_MIN_WIDTH,
     minHeight: ASSISTANT_WINDOW_MIN_HEIGHT,
+    icon: windowIcon,
     x: assistantX,
     y: assistantY,
     parent: mainWindow ?? undefined,
@@ -547,12 +567,14 @@ async function ensureWorkspaceDb(): Promise<DatabaseSync> {
     CREATE TABLE IF NOT EXISTS workflow_documents (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
+      volume_id TEXT NOT NULL DEFAULT 'volume-legacy-default',
       doc_key TEXT NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       sort_order INTEGER NOT NULL,
-      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+      FOREIGN KEY (volume_id) REFERENCES outline_volumes (id) ON DELETE CASCADE
     ) STRICT;
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -591,6 +613,7 @@ async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   ensureProjectColumns(workspaceDb)
   ensureProjectScopedColumns(workspaceDb)
   ensureVolumeColumns(workspaceDb)
+  ensureWorkflowDocumentColumns(workspaceDb)
 
   await migrateLegacyWorkspaceFile(workspaceDb)
   return workspaceDb
@@ -670,6 +693,40 @@ function ensureVolumeColumns(db: DatabaseSync): void {
   if (!outlineColumnNames.has('status')) {
     db.exec(`ALTER TABLE outline_items ADD COLUMN status TEXT NOT NULL DEFAULT 'planned';`)
   }
+}
+
+/** 确保 workflow_documents 表包含 volume_id 列，并将旧项目级流程文件迁移到每个项目的首个分卷 */
+function ensureWorkflowDocumentColumns(db: DatabaseSync): void {
+  const columns = db.prepare(`PRAGMA table_info('workflow_documents')`).all() as Array<{ name: string }>
+  const columnNames = new Set(columns.map((column) => column.name))
+
+  if (!columnNames.has('project_id')) {
+    const defaultProjectId =
+      (db.prepare(`SELECT selected_project_id AS projectId FROM app_settings WHERE id = 1`).get() as { projectId?: string } | undefined)
+        ?.projectId ||
+      (db.prepare(`SELECT id FROM projects ORDER BY rowid ASC LIMIT 1`).get() as { id?: string } | undefined)?.id ||
+      'project-1'
+    db.exec(`ALTER TABLE workflow_documents ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}';`)
+  }
+
+  if (!columnNames.has('volume_id')) {
+    db.exec(`ALTER TABLE workflow_documents ADD COLUMN volume_id TEXT NOT NULL DEFAULT '';`)
+  }
+
+  db.exec(`
+    UPDATE workflow_documents
+    SET volume_id = COALESCE(
+      (
+        SELECT id
+        FROM outline_volumes
+        WHERE outline_volumes.project_id = workflow_documents.project_id
+        ORDER BY sort_order ASC, rowid ASC
+        LIMIT 1
+      ),
+      'volume-legacy-default'
+    )
+    WHERE COALESCE(volume_id, '') = '';
+  `)
 }
 
 /**
@@ -822,6 +879,12 @@ type WorkspacePayload = {
         title: string
         wordTarget: string
         summary: string
+        workflowDocuments?: Array<{
+          key: 'task_plan' | 'findings' | 'progress' | 'current_status' | 'novel_setting' | 'character_relationships' | 'pending_hooks' | 'resource_ledger'
+          title: string
+          content: string
+          updatedAt: string
+        }>
       }>
       outlineItems: Array<{
         id: string
@@ -1354,7 +1417,13 @@ function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
     SELECT project_id AS projectId, id, title, word_target AS wordTarget, summary
     FROM outline_volumes
     ORDER BY project_id ASC, sort_order ASC
-  `).all() as Array<WorkspacePayload['workspaces'][string]['outlineVolumes'][number] & { projectId: string }>
+  `).all().map((row) => ({
+    projectId: row.projectId as string,
+    id: row.id as string,
+    title: row.title as string,
+    wordTarget: row.wordTarget as string,
+    summary: row.summary as string
+  })) as Array<WorkspacePayload['workspaces'][string]['outlineVolumes'][number] & { projectId: string }>
 
   const outlineItems = db.prepare(`
     SELECT project_id AS projectId, volume_id AS volumeId, id, title, word_target AS wordTarget, conflict, summary, status, sort_order AS sortOrder
@@ -1381,12 +1450,13 @@ function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
   `).all() as Array<WorkspacePayload['workspaces'][string]['messages'][number] & { projectId: string }>
 
   const workflowDocuments = db.prepare(`
-    SELECT project_id AS projectId, doc_key AS docKey, title, content, updated_at AS updatedAt
+    SELECT project_id AS projectId, volume_id AS volumeId, doc_key AS docKey, title, content, updated_at AS updatedAt
     FROM workflow_documents
-    ORDER BY project_id ASC, sort_order ASC
+    ORDER BY project_id ASC, volume_id ASC, sort_order ASC
   `).all() as Array<
     WorkspacePayload['workspaces'][string]['workflowDocuments'][number] & {
       projectId: string
+      volumeId: string
       docKey: WorkspacePayload['workspaces'][string]['workflowDocuments'][number]['key']
     }
   >
@@ -1437,7 +1507,15 @@ function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
           .map(({ projectId: _projectId, ...entry }) => entry),
         outlineVolumes: outlineVolumes
           .filter((volume) => volume.projectId === project.id)
-          .map(({ projectId: _projectId, ...volume }) => volume),
+          .map(({ projectId: _projectId, ...volume }) => ({
+            ...volume,
+            workflowDocuments: workflowDocuments
+              .filter((document) => document.projectId === project.id && document.volumeId === volume.id)
+              .map(({ projectId: _docProjectId, volumeId: _docVolumeId, docKey: _docKey, ...document }) => ({
+                ...document,
+                key: _docKey
+              }))
+          })),
         outlineItems: outlineItems
           .filter((item) => item.projectId === project.id)
           .map(({ projectId: _projectId, ...item }) => item),
@@ -1450,12 +1528,7 @@ function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
         messages: messages
           .filter((message) => message.projectId === project.id)
           .map(({ projectId: _projectId, ...message }) => message),
-        workflowDocuments: workflowDocuments
-          .filter((document) => document.projectId === project.id)
-          .map(({ projectId: _projectId, docKey: _docKey, ...document }) => ({
-            ...document,
-            key: _docKey
-          }))
+        workflowDocuments: []
       }
     ])
   ) as WorkspacePayload['workspaces']
@@ -1580,8 +1653,8 @@ function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePayload): vo
       VALUES (?, ?, ?, ?, ?)
     `)
     const insertWorkflowDocument = db.prepare(`
-      INSERT INTO workflow_documents (id, project_id, doc_key, title, content, updated_at, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO workflow_documents (id, project_id, volume_id, doc_key, title, content, updated_at, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     for (const project of payload.projects) {
@@ -1733,17 +1806,39 @@ function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePayload): vo
         insertMessage.run(message.id, project.id, message.role, message.content, index)
       })
 
-      workspace.workflowDocuments.forEach((document, index) => {
-        insertWorkflowDocument.run(
-          `${project.id}-${document.key}`,
-          project.id,
-          document.key,
-          document.title,
-          document.content,
-          document.updatedAt,
-          index
-        )
-      })
+      const volumeWorkflowSources =
+        workspace.outlineVolumes.flatMap((volume) =>
+          (volume.workflowDocuments ?? []).map((document, index) => ({
+            volumeId: volume.id,
+            document,
+            sortOrder: index
+          }))
+        ) ||
+        []
+
+      const fallbackWorkflowSources =
+        volumeWorkflowSources.length === 0 && workspace.outlineVolumes[0]
+          ? workspace.workflowDocuments.map((document, index) => ({
+              volumeId: workspace.outlineVolumes[0].id,
+              document,
+              sortOrder: index
+            }))
+          : []
+
+      ;(volumeWorkflowSources.length > 0 ? volumeWorkflowSources : fallbackWorkflowSources).forEach(
+        ({ volumeId, document, sortOrder }) => {
+          insertWorkflowDocument.run(
+            `${project.id}-${volumeId}-${document.key}`,
+            project.id,
+            volumeId,
+            document.key,
+            document.title,
+            document.content,
+            document.updatedAt,
+            sortOrder
+          )
+        }
+      )
     }
 
     db.prepare(`

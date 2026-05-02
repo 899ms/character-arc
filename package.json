@@ -45,7 +45,8 @@
     "files": [
       "out/**",
       "dist-electron/**",
-      "node_modules/@node-rs/**"
+      "node_modules/@node-rs/**",
+      "resources/icon.png"
     ],
     "asarUnpack": [
       "node_modules/@node-rs/**"

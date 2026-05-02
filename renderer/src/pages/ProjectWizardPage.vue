@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ArrowLeft, BookA, CheckCircle2, ChevronRight, Info, Sparkles } from 'lucide-vue-next'
 import { NCheckbox, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
@@ -21,6 +21,16 @@ const message = useMessage()
 
 const step = ref(1)
 const isGenerating = ref(false)
+
+const viewportWidth = ref(window.innerWidth)
+const isCompactWizard = computed(() => viewportWidth.value <= 820)
+
+function syncViewport(): void {
+  viewportWidth.value = window.innerWidth
+}
+
+onMounted(() => window.addEventListener('resize', syncViewport))
+onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
 
 const formData = reactive({
   title: '',
@@ -239,6 +249,31 @@ async function goNext(): Promise<void> {
       </aside>
 
       <section class="wizard-main">
+        <div v-if="isCompactWizard" class="compact-steps">
+          <button
+            v-for="item in steps"
+            :key="item.num"
+            type="button"
+            class="compact-step"
+            :class="{
+              active: step === item.num,
+              done: step > item.num,
+              clickable: item.num < step && !isGenerating
+            }"
+            :disabled="item.num > step || isGenerating"
+            @click="activateStep(item.num)"
+          >
+            <span class="compact-step-marker">
+              <CheckCircle2 v-if="step > item.num" :size="14" />
+              <span v-else>{{ item.num }}</span>
+            </span>
+            <span class="compact-step-title">{{ item.title }}</span>
+          </button>
+          <div class="compact-step-track">
+            <div class="compact-step-fill" :style="{ width: ((step - 1) / (steps.length - 1)) * 100 + '%' }"></div>
+          </div>
+        </div>
+
         <header class="wizard-header">
           <button class="back-button" @click="goBack">
             <ArrowLeft :size="18" />
@@ -477,19 +512,19 @@ async function goNext(): Promise<void> {
 <style scoped>
 .wizard-page {
   display: flex;
-  min-height: 100%;
-  padding: clamp(16px, 2.8vw, 28px);
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--arc-primary) 7%, transparent), transparent 28%),
-    linear-gradient(180deg, color-mix(in srgb, var(--arc-bg-surface) 55%, white), var(--arc-bg-body));
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-primary);
 }
 
 .wizard-shell {
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   width: min(1280px, 100%);
-  min-height: calc(100dvh - 56px);
-  max-height: calc(100dvh - 56px);
+  height: 100%;
   margin: 0 auto;
   overflow: hidden;
   border: 1px solid var(--arc-border);
@@ -505,6 +540,7 @@ async function goNext(): Promise<void> {
   gap: 24px;
   padding: 28px 24px;
   border-right: 1px solid var(--arc-border);
+  overflow-y: auto;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--arc-primary) 4%, white), color-mix(in srgb, var(--arc-bg-surface) 96%, white));
 }
@@ -685,19 +721,25 @@ async function goNext(): Promise<void> {
 }
 
 .wizard-main {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex: 1;
   min-width: 0;
-  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
   background: color-mix(in srgb, var(--arc-bg-surface) 94%, white);
 }
 
 .wizard-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  flex-shrink: 0;
   padding: 28px 28px 18px;
   border-bottom: 1px solid var(--arc-border);
+  background: color-mix(in srgb, var(--arc-bg-surface) 94%, white);
 }
 
 .back-button {
@@ -748,6 +790,7 @@ async function goNext(): Promise<void> {
 }
 
 .wizard-stage {
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -1131,10 +1174,14 @@ async function goNext(): Promise<void> {
 }
 
 .wizard-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-shrink: 0;
   padding: 18px 28px 24px;
   border-top: 1px solid var(--arc-border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), white);
@@ -1211,33 +1258,48 @@ async function goNext(): Promise<void> {
 }
 
 @media (max-width: 960px) {
-  .wizard-page {
-    padding: 12px;
-  }
-
   .wizard-shell {
-    grid-template-columns: 1fr;
-    min-height: calc(100dvh - 24px);
-    max-height: none;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 
   .wizard-sidebar {
-    gap: 18px;
-    padding: 22px 18px;
-    border-right: none;
-    border-bottom: 1px solid var(--arc-border);
+    gap: 14px;
+    padding: 18px 14px;
   }
 
-  .wizard-main {
-    min-height: 0;
+  .sidebar-copy h1 {
+    font-size: 22px;
+  }
+
+  .sidebar-copy p {
+    display: none;
   }
 
   .step-list {
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .step-item {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .step-text small {
+    display: none;
   }
 
   .sidebar-panel {
     justify-content: flex-start;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .sidebar-panel h2 {
+    font-size: 18px;
+  }
+
+  .sidebar-note {
+    display: none;
   }
 
   .wizard-header,
@@ -1246,25 +1308,57 @@ async function goNext(): Promise<void> {
     padding-left: 18px;
     padding-right: 18px;
   }
+
+  .wizard-header {
+    padding-top: 18px;
+    padding-bottom: 12px;
+  }
+
+  .wizard-footer {
+    padding: 14px 18px 16px;
+  }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 820px) {
   .wizard-shell {
-    border-radius: 22px;
-  }
-
-  .genre-grid,
-  .length-grid,
-  .premise-helper-grid,
-  .summary-grid {
     grid-template-columns: 1fr;
+    border-radius: 0;
   }
 
-  .review-state,
-  .toggle-panel,
+  .wizard-sidebar {
+    display: none;
+  }
+
+  .wizard-header {
+    padding: 12px 16px 10px;
+    gap: 10px;
+  }
+
+  .back-button {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+
+  .header-copy h2 {
+    font-size: clamp(18px, 2.4vw, 24px);
+  }
+
+  .header-copy p {
+    display: none;
+  }
+
+  .wizard-stage {
+    padding: 12px 16px 0;
+  }
+
   .wizard-footer {
-    flex-direction: column;
-    align-items: flex-start;
+    padding: 10px 16px 14px;
+    gap: 10px;
+  }
+
+  .footer-meta {
+    display: none;
   }
 
   .footer-actions {
@@ -1274,41 +1368,135 @@ async function goNext(): Promise<void> {
   .footer-actions button {
     flex: 1;
   }
+
+  .content-card {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .section-head {
+    margin-bottom: 12px;
+  }
+
+  .section-head h3,
+  .review-copy h3 {
+    font-size: 16px;
+  }
+
+  .genre-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .genre-chip {
+    padding: 10px 8px;
+    font-size: 12px;
+    border-radius: 12px;
+  }
+
+  .length-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .length-card {
+    min-height: 68px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .premise-helper-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review-state,
+  .toggle-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .generate-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+  }
+
+  .wizard-textarea {
+    min-height: 180px;
+  }
+
+  .primary-action,
+  .secondary-action {
+    min-height: 40px;
+    font-size: 13px;
+    border-radius: 12px;
+  }
 }
 
 @media (max-width: 560px) {
-  .wizard-sidebar,
   .wizard-header,
   .wizard-stage,
   .wizard-footer {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .wizard-header {
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+
+  .wizard-footer {
+    padding: 8px 12px 12px;
   }
 
   .content-card {
-    padding: 18px 16px;
+    padding: 12px 10px;
+    border-radius: 14px;
   }
 
   .wizard-input,
   .wizard-textarea {
     font-size: 14px;
+    border-radius: 12px;
   }
 
   .wizard-textarea {
-    min-height: 240px;
+    min-height: 140px;
+    padding: 12px;
   }
 
-  .sidebar-copy h1,
   .header-copy h2 {
-    font-size: 24px;
+    font-size: 18px;
   }
 
-  .footer-actions {
-    flex-direction: column-reverse;
+  .genre-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .length-grid {
+    grid-template-columns: 1fr;
   }
 
   .footer-actions button {
-    width: 100%;
+    min-height: 38px;
+    font-size: 13px;
+  }
+
+  .step-pane {
+    gap: 10px;
+  }
+
+  .field + .field {
+    margin-top: 12px;
+  }
+
+  .section-head {
+    margin-bottom: 10px;
   }
 }
 
@@ -1329,6 +1517,101 @@ async function goNext(): Promise<void> {
 
 .wizard-step-leave-to {
   opacity: 0;
+}
+
+/* Compact step indicator (small windows) */
+.compact-steps {
+  display: none;
+}
+
+.compact-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: default;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 10px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.compact-step.clickable {
+  cursor: pointer;
+}
+
+.compact-step.clickable:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.compact-step.active {
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, white);
+}
+
+.compact-step.done:not(.active) {
+  color: var(--arc-primary);
+  opacity: 0.7;
+}
+
+.compact-step-marker {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: var(--arc-bg-surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compact-step.active .compact-step-marker {
+  border-color: color-mix(in srgb, var(--arc-primary) 25%, white);
+  background: color-mix(in srgb, var(--arc-primary) 12%, white);
+  color: var(--arc-primary);
+}
+
+.compact-step.done .compact-step-marker {
+  border-color: color-mix(in srgb, var(--arc-primary) 18%, white);
+  color: var(--arc-primary);
+}
+
+.compact-step-title {
+  white-space: nowrap;
+}
+
+.compact-step-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--arc-border);
+  border-radius: 1px;
+}
+
+.compact-step-fill {
+  height: 100%;
+  background: var(--arc-primary);
+  border-radius: 1px;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (max-width: 820px) {
+  .compact-steps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    padding: 10px 18px 14px;
+    border-bottom: 1px solid var(--arc-border);
+    background: color-mix(in srgb, var(--arc-bg-surface) 94%, white);
+  }
 }
 
 @keyframes pulseGlow {

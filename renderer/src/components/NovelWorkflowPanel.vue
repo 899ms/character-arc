@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowRight, BookOpenText, Compass, GitBranch, LibraryBig, Save, Sparkles, ScrollText, Users2 } from 'lucide-vue-next'
+import { ArrowRight, BookOpenText, Compass, FileText, GitBranch, LibraryBig, PenTool, Radar, Save, Sparkles, ScrollText, Users2, WandSparkles } from 'lucide-vue-next'
 import { NButton, NInput, useMessage } from 'naive-ui'
 import { workflowStageDocumentMap } from '@/features/novelWorkflow/documents'
 import { formatVolumeLabel } from '@/features/workspace/outlineVolumes'
@@ -34,6 +34,16 @@ const workflowStageStates = computed(() => currentProject.value?.novelWorkflowSt
 const referenceWorks = computed(() => currentProject.value?.referenceWorks ?? [])
 const latestAnalyzedReference = computed(() =>
   [...referenceWorks.value].reverse().find((work) => work.analysis)
+)
+const analyzedReferenceCount = computed(() => referenceWorks.value.filter((work) => work.analysis).length)
+const totalReferenceStyleRules = computed(() =>
+  referenceWorks.value.reduce((count, work) => count + (work.analysis?.styleRules.length ?? 0), 0)
+)
+const referenceFindingsDocument = computed(() =>
+  workflowDocuments.value.find((document) => document.key === 'findings')
+)
+const hasReferenceFindingsContent = computed(() =>
+  Boolean(referenceFindingsDocument.value?.content.trim() && !/待 AI 生成|待补充/.test(referenceFindingsDocument.value.content))
 )
 const isReferenceOperationActive = computed(() => isImportingReferenceNovel.value || isGeneratingReferenceInsights.value)
 const workflowStages = computed(() =>
@@ -745,54 +755,132 @@ function resolveStageStatusLabel(status: string): string {
         </div>
 
         <div v-if="activeStage.id === 'reference'" class="workflow-focus-card reference-analysis-card">
-          <div class="reference-analysis-head">
-            <div>
-              <strong>拆书分析与参考提炼</strong>
-              <p>直接导入小说文件即可开始拆书。系统会自动识别作品标题、按文件类型记录来源，并把结果整理成后续创作可复用的风格规则。</p>
+          <div class="reference-analysis-hero">
+            <div class="reference-analysis-copy">
+              <span class="reference-analysis-kicker">Reference Lab</span>
+              <strong>选题与参考</strong>
+              <p>这里是参考作品的拆书工作台。先把优秀作品拆成风格规则，再把这些规则整理成参考阶段结论，供后续立项、大纲和正文反复复用。</p>
+              <div class="reference-analysis-stats">
+                <div class="reference-analysis-stat">
+                  <span>已分析参考</span>
+                  <strong>{{ analyzedReferenceCount }}</strong>
+                </div>
+                <div class="reference-analysis-stat">
+                  <span>累计风格规则</span>
+                  <strong>{{ totalReferenceStyleRules }}</strong>
+                </div>
+                <div class="reference-analysis-stat">
+                  <span>阶段 findings</span>
+                  <strong>{{ hasReferenceFindingsContent ? '已沉淀' : '待整理' }}</strong>
+                </div>
+              </div>
             </div>
-            <span class="reference-analysis-phase">{{ resolveReferenceImportPhaseLabel(referenceImportProgress?.phase) }}</span>
-          </div>
-          <div class="workflow-panel-actions">
-            <n-button round strong secondary :disabled="isReferenceOperationActive" @click="importReferenceNovelAnalysis">
-              {{ isImportingReferenceNovel ? '拆书中...' : '导入小说并拆书' }}
-            </n-button>
-            <n-button type="primary" round strong :disabled="isReferenceOperationActive" @click="generateReferenceInsights">
-              {{ isGeneratingReferenceInsights ? '提炼中...' : 'AI提炼参考阶段' }}
-            </n-button>
-          </div>
-          <div class="reference-progress-card" :class="{ active: Boolean(referenceImportProgress) }">
-            <div class="reference-progress-meta">
-              <strong>{{ referenceImportProgress?.sourceTitle ? `正在处理《${referenceImportProgress.sourceTitle}》` : '等待开始拆书分析' }}</strong>
-              <span>{{ referenceImportProgress?.percent ?? 0 }}%</span>
+            <div class="reference-analysis-command">
+              <div class="reference-analysis-phase-wrap">
+                <span class="reference-analysis-phase">{{ resolveReferenceImportPhaseLabel(referenceImportProgress?.phase) }}</span>
+                <small>拆书和参考提炼共用这一套状态区，不再让你盯着按钮猜系统在干嘛。</small>
+              </div>
+              <div class="reference-analysis-actions">
+                <n-button round strong secondary :disabled="isReferenceOperationActive" @click="importReferenceNovelAnalysis">
+                  {{ isImportingReferenceNovel ? '拆书中...' : '导入小说并拆书' }}
+                </n-button>
+                <n-button type="primary" round strong :disabled="isReferenceOperationActive" @click="generateReferenceInsights">
+                  {{ isGeneratingReferenceInsights ? '提炼中...' : 'AI提炼参考阶段' }}
+                </n-button>
+              </div>
             </div>
-            <div class="reference-progress-track">
-              <div class="reference-progress-fill" :style="{ width: `${referenceImportProgress?.percent ?? 0}%` }" />
-            </div>
-            <p>{{ referenceImportProgress?.message || '导入后会依次完成：读取正文、切分分块、逐块分析、汇总模板、回填项目。' }}</p>
-            <small v-if="referenceImportProgress && referenceImportProgress.total > 1">
-              当前进度：{{ referenceImportProgress.current }} / {{ referenceImportProgress.total }}
-            </small>
           </div>
-          <div class="reference-usage-grid">
-            <article class="reference-usage-card">
-              <strong>写作风格约束</strong>
-              <p>拆书生成的仿写模板会自动追加到项目风格规则里，后续故事立项、章节生成都会吃这套约束。</p>
-              <button class="doc-tab active" @click="openPanel('settings')">去项目设置查看</button>
+          <div class="reference-analysis-flow">
+            <article class="reference-flow-card">
+              <span>01</span>
+              <strong>拆书分析</strong>
+              <p>导入参考小说，系统按分块逐段提炼句式、对白、节奏和情绪表达。</p>
             </article>
-            <article class="reference-usage-card">
-              <strong>参考阶段 Findings</strong>
-              <p>拆书摘要会写进当前卷的 <code>findings</code>，作为后续阶段和 AI 的阶段记忆。</p>
-              <button class="doc-tab active" @click="openReferenceFindings">查看 findings</button>
+            <article class="reference-flow-card">
+              <span>02</span>
+              <strong>参考提炼</strong>
+              <p>把所有拆书结果浓缩成当前阶段共识，沉淀为选题判断、题材爆点和平台偏好。</p>
             </article>
-            <article class="reference-usage-card">
-              <strong>章节创作与续写</strong>
-              <p>章节助理会读取项目风格 prompt，所以你后面在正文创作里能直接继承拆出来的文笔和节奏。</p>
-              <button class="doc-tab active" @click="openPanel('chapters')">去章节创作</button>
+            <article class="reference-flow-card">
+              <span>03</span>
+              <strong>进入后续创作</strong>
+              <p>风格模板会自动进入项目文风系统，后面写大纲和正文都会直接调用。</p>
             </article>
+          </div>
+          <div class="reference-analysis-grid">
+            <div class="reference-progress-card" :class="{ active: Boolean(referenceImportProgress) }">
+              <div class="reference-progress-meta">
+                <div>
+                  <span class="reference-progress-label">当前任务</span>
+                  <strong>{{ referenceImportProgress?.sourceTitle ? `正在处理《${referenceImportProgress.sourceTitle}》` : '等待开始拆书分析' }}</strong>
+                </div>
+                <span>{{ referenceImportProgress?.percent ?? 0 }}%</span>
+              </div>
+              <div class="reference-progress-track">
+                <div class="reference-progress-fill" :style="{ width: `${referenceImportProgress?.percent ?? 0}%` }" />
+              </div>
+              <p>{{ referenceImportProgress?.message || '导入后会依次完成：读取正文、切分分块、逐块分析、汇总模板、回填项目。' }}</p>
+              <small v-if="referenceImportProgress && referenceImportProgress.total > 1">
+                当前进度：{{ referenceImportProgress.current }} / {{ referenceImportProgress.total }}
+              </small>
+              <div class="reference-progress-steps">
+                <span :class="{ active: ['extracting', 'chunking', 'chunk-analysis', 'aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">读取/切分</span>
+                <span :class="{ active: ['chunk-analysis', 'aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">逐块分析</span>
+                <span :class="{ active: ['aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">汇总结论</span>
+                <span :class="{ active: ['saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">回填项目</span>
+              </div>
+            </div>
+            <div class="reference-usage-panel">
+              <div class="reference-usage-panel-head">
+                <span>结果去向</span>
+                <strong>拆书不是孤立报告，它会进入下面这些模块</strong>
+              </div>
+              <div class="reference-usage-grid">
+                <article class="reference-usage-card emphasis">
+                  <div class="reference-usage-icon">
+                    <WandSparkles :size="16" />
+                  </div>
+                  <strong>写作风格约束</strong>
+                  <p>拆书生成的仿写模板会自动追加到项目风格规则里，后续故事立项、章节生成都会吃这套约束。</p>
+                  <button class="doc-tab active" @click="openPanel('settings')">去项目设置查看</button>
+                </article>
+                <article class="reference-usage-card">
+                  <div class="reference-usage-icon">
+                    <FileText :size="16" />
+                  </div>
+                  <strong>参考阶段 Findings</strong>
+                  <p>拆书摘要会写进当前卷的 <code>findings</code>，作为后续阶段和 AI 的阶段记忆。</p>
+                  <button class="doc-tab active" @click="openReferenceFindings">查看 findings</button>
+                </article>
+                <article class="reference-usage-card">
+                  <div class="reference-usage-icon">
+                    <PenTool :size="16" />
+                  </div>
+                  <strong>章节创作与续写</strong>
+                  <p>章节助理会读取项目风格 prompt，所以你后面在正文创作里能直接继承拆出来的文笔和节奏。</p>
+                  <button class="doc-tab active" @click="openPanel('chapters')">去章节创作</button>
+                </article>
+                <article class="reference-usage-card">
+                  <div class="reference-usage-icon">
+                    <Radar :size="16" />
+                  </div>
+                  <strong>选题判断与立项</strong>
+                  <p>参考提炼会把题材爆点、平台偏好和共性风格压缩成阶段结论，供后续立项直接读取。</p>
+                  <button class="doc-tab active" @click="generateReferenceInsights">立即整理阶段结论</button>
+                </article>
+              </div>
+            </div>
           </div>
           <div v-if="latestAnalyzedReference?.analysis" class="reference-analysis-footnote">
             最近一次完成拆书：<strong>{{ latestAnalyzedReference.title }}</strong>
             <span>已提炼 {{ latestAnalyzedReference.analysis.styleRules.length }} 条风格规则，并回填到项目风格约束。</span>
+          </div>
+          <div v-if="referenceWorks.length > 0" class="reference-assets-head">
+            <div>
+              <span>已沉淀资产</span>
+              <strong>参考作品档案</strong>
+            </div>
+            <small>你已经拆过的作品会留在这里，方便回看和继续提炼。</small>
           </div>
           <div v-if="referenceWorks.length > 0" class="reference-work-list">
             <article v-for="work in referenceWorks" :key="work.id" class="reference-work-card">
@@ -1157,46 +1245,205 @@ function resolveStageStatusLabel(status: string): string {
 }
 
 .reference-analysis-card {
-  gap: 14px;
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(191, 219, 254, 0.9);
+  background:
+    radial-gradient(circle at top right, rgba(125, 211, 252, 0.18), transparent 30%),
+    radial-gradient(circle at left bottom, rgba(253, 230, 138, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  padding: 20px;
 }
 
-.reference-analysis-head {
+.reference-analysis-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.42), transparent 42%),
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 18px);
+  pointer-events: none;
+}
+
+.reference-analysis-hero,
+.reference-analysis-flow,
+.reference-analysis-grid,
+.reference-analysis-footnote,
+.reference-assets-head,
+.reference-work-list {
+  position: relative;
+  z-index: 1;
+}
+
+.reference-analysis-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.reference-analysis-copy {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.reference-analysis-head p {
-  margin: 6px 0 0;
+.reference-analysis-kicker {
+  display: inline-flex;
+  align-self: flex-start;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: rgba(241, 245, 249, 0.98);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 6px 10px;
+  text-transform: uppercase;
+}
+
+.reference-analysis-copy strong {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.reference-analysis-copy p {
+  margin: 0;
+  max-width: 50rem;
   color: var(--arc-text-secondary);
   font-size: 13px;
-  line-height: 1.72;
+  line-height: 1.82;
+}
+
+.reference-analysis-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.reference-analysis-stat {
+  border: 1px solid rgba(226, 232, 240, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 12px;
+}
+
+.reference-analysis-stat span {
+  display: block;
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.reference-analysis-stat strong {
+  display: block;
+  margin: 0;
+  color: var(--arc-text-primary);
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.reference-analysis-command {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.86));
+  padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.reference-analysis-phase-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .reference-analysis-phase {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(219, 234, 254, 0.92);
+  background: rgba(37, 99, 235, 0.12);
   color: #1d4ed8;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 6px 10px;
   white-space: nowrap;
 }
 
-.reference-progress-card {
-  border: 1px solid rgba(226, 232, 240, 0.84);
+.reference-analysis-phase-wrap small {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.reference-analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.reference-analysis-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.reference-flow-card {
+  border: 1px solid rgba(226, 232, 240, 0.82);
   border-radius: 18px;
-  background: rgba(248, 250, 252, 0.76);
+  background: rgba(255, 255, 255, 0.84);
   padding: 14px;
 }
 
+.reference-flow-card span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  color: rgba(248, 250, 252, 0.98);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.reference-flow-card strong {
+  display: block;
+  margin: 12px 0 6px;
+}
+
+.reference-flow-card p {
+  margin: 0;
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.72;
+}
+
+.reference-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.reference-progress-card {
+  border: 1px solid rgba(226, 232, 240, 0.84);
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.82);
+  padding: 16px;
+}
+
 .reference-progress-card.active {
-  border-color: rgba(59, 130, 246, 0.24);
-  background: rgba(239, 246, 255, 0.78);
+  border-color: rgba(59, 130, 246, 0.28);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.86), rgba(248, 250, 252, 0.88));
 }
 
 .reference-progress-meta {
@@ -1204,6 +1451,13 @@ function resolveStageStatusLabel(status: string): string {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.reference-progress-label {
+  display: block;
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  margin-bottom: 6px;
 }
 
 .reference-progress-meta strong {
@@ -1245,9 +1499,63 @@ function resolveStageStatusLabel(status: string): string {
   font-size: 11px;
 }
 
+.reference-progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.reference-progress-steps span {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.reference-progress-steps span.active {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(219, 234, 254, 0.92);
+  color: #1d4ed8;
+}
+
+.reference-usage-panel {
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 16px;
+}
+
+.reference-usage-panel-head {
+  margin-bottom: 12px;
+}
+
+.reference-usage-panel-head span {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reference-usage-panel-head strong {
+  display: block;
+  margin: 0;
+  color: var(--arc-text-primary);
+  font-size: 16px;
+  letter-spacing: -0.03em;
+}
+
 .reference-usage-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1257,8 +1565,24 @@ function resolveStageStatusLabel(status: string): string {
   gap: 8px;
   border: 1px solid rgba(226, 232, 240, 0.84);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(248, 250, 252, 0.74);
   padding: 14px;
+}
+
+.reference-usage-card.emphasis {
+  border-color: rgba(96, 165, 250, 0.24);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.82), rgba(255, 255, 255, 0.94));
+}
+
+.reference-usage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.92);
+  color: rgba(248, 250, 252, 0.98);
 }
 
 .reference-usage-card strong {
@@ -1283,11 +1607,42 @@ function resolveStageStatusLabel(status: string): string {
   color: var(--arc-text-secondary);
   font-size: 12px;
   line-height: 1.7;
+  padding: 0 2px;
+}
+
+.reference-assets-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.reference-assets-head span {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reference-assets-head strong {
+  display: block;
+  margin: 0;
+}
+
+.reference-assets-head small {
+  max-width: 24rem;
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .reference-work-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
@@ -1500,12 +1855,21 @@ function resolveStageStatusLabel(status: string): string {
   }
 
   .reference-analysis-head,
-  .reference-progress-meta {
+  .reference-progress-meta,
+  .reference-assets-head {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .reference-analysis-hero,
+  .reference-analysis-grid,
+  .reference-analysis-flow,
+  .reference-work-list,
   .reference-usage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-analysis-stats {
     grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Download, FileJson, FileStack, FileText, FolderOutput, Lightbulb, Network, PenTool, Save, Users } from 'lucide-vue-next'
 import { NButton, NCard, NFormItem, NInput, NModal, NSelect, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
@@ -20,6 +20,8 @@ const importConflictMode = ref<ImportConflictMode>('copy')
 const importModalVisible = ref(false)
 const pendingImportPayload = ref<ProjectImportPayload | null>(null)
 const pendingImportMeta = ref<CharacterArcImportMeta | null>(null)
+const draftWritingStylePresetId = ref('')
+const draftWritingStylePrompt = ref('')
 
 const autoSaveSelectOptions = [...autoSaveOptions]
 const uiScaleOptions = [
@@ -31,7 +33,23 @@ const uiScaleOptions = [
   { label: '140%', value: 1.4 }
 ]
 
-const activeWritingStyle = computed(() => buildProjectWritingStyleContext(appStore.currentProject))
+const activeWritingStyle = computed(() =>
+  buildProjectWritingStyleContext({
+    writingStylePresetId: draftWritingStylePresetId.value,
+    writingStylePrompt: draftWritingStylePrompt.value
+  })
+)
+const hasStyleDraftChanges = computed(() => {
+  const project = appStore.currentProject
+  if (!project) {
+    return false
+  }
+
+  return (
+    draftWritingStylePresetId.value !== (project.writingStylePresetId ?? '') ||
+    draftWritingStylePrompt.value !== (project.writingStylePrompt ?? '')
+  )
+})
 // 导入冲突策略选项
 const importConflictOptions = [
   { label: '新建副本', value: 'copy' as const },
@@ -47,26 +65,16 @@ const importModuleLabelMap: Record<ImportExportModuleType, string> = {
   chapters: '章节数据'
 }
 
-// 更新项目的写作风格预设
-function updateWritingStylePreset(presetId: string): void {
+function saveWritingStyleSettings(): void {
   if (!appStore.currentProject?.id) {
     return
   }
 
   appStore.updateProject(appStore.currentProject.id, {
-    writingStylePresetId: presetId
+    writingStylePresetId: draftWritingStylePresetId.value || 'cinematic-cool',
+    writingStylePrompt: draftWritingStylePrompt.value
   })
-}
-
-// 更新项目的自定义风格要求文本
-function updateWritingStylePrompt(prompt: string): void {
-  if (!appStore.currentProject?.id) {
-    return
-  }
-
-  appStore.updateProject(appStore.currentProject.id, {
-    writingStylePrompt: prompt
-  })
+  message.success('写作风格设置已保存')
 }
 
 function buildExportStem(suffix: string): string {
@@ -430,9 +438,9 @@ function closeImportModal(): void {
             v-for="preset in writingStylePresets"
             :key="preset.id"
             class="style-preset-card"
-            :class="{ active: appStore.currentProject?.writingStylePresetId === preset.id }"
+            :class="{ active: draftWritingStylePresetId === preset.id }"
             :style="{ background: preset.accent }"
-            @click="updateWritingStylePreset(preset.id)"
+            @click="draftWritingStylePresetId = preset.id"
           >
             <strong>{{ preset.label }}</strong>
             <span>{{ preset.description }}</span>
@@ -442,11 +450,22 @@ function closeImportModal(): void {
           <n-input
             type="textarea"
             :autosize="{ minRows: 4, maxRows: 7 }"
-            :value="appStore.currentProject?.writingStylePrompt ?? ''"
-            @update:value="(value) => updateWritingStylePrompt(value)"
+            v-model:value="draftWritingStylePrompt"
             placeholder="例如：对话更克制，避免现代网络口头禅；环境描写多用霓虹、雨幕、金属反光等意象。"
           />
         </n-form-item>
+        <div class="style-save-row">
+          <div class="style-save-hint">
+            <strong>保存前预览</strong>
+            <span>修改风格预设或补充规则后，需要点击保存才会写入当前项目。</span>
+          </div>
+          <n-button type="primary" round strong :disabled="!hasStyleDraftChanges" @click="saveWritingStyleSettings">
+            <template #icon>
+              <Save :size="16" />
+            </template>
+            保存设置
+          </n-button>
+        </div>
         <div class="style-footnote">
           当前章节助理、灵感生成、大纲扩写和角色/设定生成都会优先参考这里的项目风格。
         </div>
@@ -625,6 +644,35 @@ function closeImportModal(): void {
   line-height: 1.7;
 }
 
+.style-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.84);
+}
+
+.style-save-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.style-save-hint strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.style-save-hint span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .block-title {
   display: inline-flex;
   align-items: center;
@@ -800,5 +848,18 @@ function closeImportModal(): void {
   .module-export-grid {
     grid-template-columns: 1fr;
   }
+
+  .style-save-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
+watch(
+  () => appStore.currentProject,
+  (project) => {
+    draftWritingStylePresetId.value = project?.writingStylePresetId ?? ''
+    draftWritingStylePrompt.value = project?.writingStylePrompt ?? ''
+  },
+  { immediate: true }
+)

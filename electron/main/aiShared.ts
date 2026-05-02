@@ -24,6 +24,7 @@ export type AiTaskName =
   | 'reference-style-analysis' // 拆书提炼仿写规则
   | 'workflow-documents'  // 生成项目流程文件
   | 'chapter-assistant'   // 章节创作助理（支持流式）
+  | 'chapter-first-draft' // 章节初稿生成（支持流式）
   | 'project-bootstrap'   // 项目初始化，批量生成世界观 + 大纲
   | 'chapter-analysis'    // 章节质量分析
   | 'inspiration-pack'    // 批量生成灵感卡片
@@ -313,6 +314,8 @@ export function resolveMaxTokens(task?: AiTaskPayload): number | undefined {
     case 'workflow-documents':
       // 分析和灵感包输出中等长度
       return 1200
+    case 'chapter-first-draft':
+      return 2200
     case 'chapter-assistant':
       // 章节助理根据用户选择的响应长度动态调整
       switch (String(task.context.responseLength ?? 'medium')) {

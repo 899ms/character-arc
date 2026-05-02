@@ -131,6 +131,10 @@ const PROMPT_TASK_PROFILES: Record<AiTaskName, PromptTaskProfile> = {
     label: '章节创作助理',
     defaultCapabilities: ['settings', 'chapters', 'worldview', 'characters', 'relations', 'outline', 'inspiration', 'writing-style', 'project-skills', 'versioning']
   },
+  'chapter-first-draft': {
+    label: '章节初稿生成',
+    defaultCapabilities: ['settings', 'chapters', 'worldview', 'characters', 'relations', 'outline', 'inspiration', 'writing-style', 'project-skills', 'versioning']
+  },
   'project-bootstrap': {
     label: '项目初始化',
     defaultCapabilities: ['settings', 'worldview', 'outline', 'characters', 'writing-style']

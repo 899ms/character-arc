@@ -310,6 +310,148 @@ export function buildTaskPrompt(task: AiTaskPayload): PromptPair {
     })
   }
 
+  // ── 章节初稿生成任务（支持流式输出） ──
+  if (task.task === 'chapter-first-draft') {
+    const worldviewEntries = Array.isArray(context.worldviewEntries)
+      ? context.worldviewEntries
+          .slice(0, 8)
+          .map((entry) => `${String((entry as Record<string, unknown>).title ?? '')}：${String((entry as Record<string, unknown>).content ?? '')}`)
+          .join('\n')
+      : ''
+    const characters = Array.isArray(context.characters)
+      ? context.characters
+          .slice(0, 10)
+          .map((character) => `${String((character as Record<string, unknown>).name ?? '')} / ${String((character as Record<string, unknown>).role ?? '')}：${String((character as Record<string, unknown>).description ?? '')}`)
+          .join('\n')
+      : ''
+    const organizations = formatOrganizations(context.organizations)
+    const relationships = formatCharacterRelationships(context.characterRelationships, context.characters)
+    const memberships = formatOrganizationMemberships(context.organizationMemberships, context.organizations, context.characters)
+    const inspirationEntries = Array.isArray(context.inspirationEntries)
+      ? context.inspirationEntries
+          .slice(0, 6)
+          .map((entry) => {
+            const record = entry as Record<string, unknown>
+            const tags = Array.isArray(record.tags) ? record.tags.map((tag) => String(tag)).join('、') : ''
+            return `${String(record.type ?? '')} / ${String(record.title ?? '')}：${String(record.content ?? '')}${tags ? `（标签：${tags}）` : ''}`
+          })
+          .join('\n')
+      : ''
+    const outlineItems = Array.isArray(context.outlineItems)
+      ? context.outlineItems
+          .slice(0, 8)
+          .map((item) => `${String((item as Record<string, unknown>).title ?? '')}：${String((item as Record<string, unknown>).summary ?? '')}`)
+          .join('\n')
+      : ''
+    const relatedChapters = Array.isArray(context.relatedChapters)
+      ? context.relatedChapters
+          .slice(0, 2)
+          .map((item, index) => {
+            const record = item as Record<string, unknown>
+            return `关联章节${index + 1}：${String(record.title ?? '')}\n摘要：${String(record.summary ?? '')}\n正文预览：${String(record.preview ?? '')}`
+          })
+          .join('\n\n')
+      : ''
+    const chapterContent = String(context.chapterContent ?? '').trim()
+    const chapterHasExistingContent = Boolean(context.chapterHasExistingContent)
+    const targetWordCount = String(context.targetWordCount ?? context.chapterWordTarget ?? '').trim()
+    const writingStyleLabel = String(context.writingStyleLabel ?? '未指定')
+    const writingStylePrompt = String(context.writingStylePrompt ?? '暂无')
+
+    return wrapPrompt({
+      system: `你是 CharacterArc 的章节初稿生成器。你的唯一任务，是基于项目设定、当前分卷目标、章节标题/摘要/大纲与角色关系，直接生成“这一章”的第一版正文草稿。只输出正文，不要解释，不要返回 JSON，不要写提示语，不要自我说明。
+
+【任务边界】
+- 这是“章节初稿生成”，不是润色，不是续写建议，不是分析。
+- 如果当前章节正文为空，就按“从零起稿”处理，禁止假装承接不存在的前文。
+- 如果当前章节正文不为空，也不要把任务理解成“续写”；你要重写并产出一版完整初稿，而不是在旧文后面往下接。
+- 输出结果会直接覆盖当前章节全部内容，所以正文必须是完整可读的一章，不要输出提纲、注释、分点说明或“以下是初稿”。
+
+【初稿写作目标】
+- 先识别本章更接近哪类章节：布局章、事件章、过渡章、回收章，再决定写法。
+- 章节必须有明确开场、推进和收束，不要写成散段拼贴。
+- 开场直接入场景、动作、压力或利益交换，不要历史课件式开头，不要长段背景介绍。
+- 每个主要段落都要推进至少一项：信息、关系、利益、风险、地位、资源、伏笔回收。
+- 角色行为必须基于利益、恐惧、误判、立场和当前已知信息，不能为了推进剧情降智。
+- 收益要落到具体资源、情报、关系变化、地位变化或钩子回收，不能写抽象提升。
+
+【字数与完成度】
+- 目标字数尽量贴近 ${targetWordCount || '当前章节预估字数'}，允许上下浮动约 10%。
+- 不要为了凑字数灌水；宁可密度更高，也不要流水账。
+- 如果目标字数较高，优先扩展冲突过程、人物互动、反馈兑现与余波，而不是堆背景说明。
+
+【文风与质量约束】
+- 项目默认风格：${writingStyleLabel}
+- 风格要求：${writingStylePrompt}
+- Show, don't tell。用动作、物件、感官、代价、价格、制度摩擦说话。
+- 去AI味：句式长短交替，避免同一句式和同一主语反复起头；少堆高级词和空泛判断。
+- 群像反应要具体，不要写成“全场震惊”模板。
+- 配角和反派必须有自己的算盘、误判和反扑，不是木桩。
+- 禁止机械降神，禁止无铺垫新设定救场，禁止文青病，禁止空话。
+
+【连贯性规则】
+- 你必须尊重当前分卷目标、章节摘要、相关大纲、世界观和人物关系。
+- 可以参考相邻章节摘要与预览来保持整卷连续性，但不要把这次任务写成“上一章之后的补几段”。
+- 如果当前上下文说明本章尚未写正文，就不要引用“本章前文已经发生了什么”这类不存在内容。
+
+【输出要求】
+- 只输出最终正文。
+- 不要标题前缀，不要“第X章”编号，不要注释，不要小结，不要分析。`,
+      user: `请为当前小说项目生成本章初稿。
+
+项目标题：${String(context.projectTitle ?? '')}
+项目题材：${String(context.projectGenre ?? '')}
+当前分卷：${String(context.chapterVolumeTitle ?? '')}
+当前分卷摘要：${String(context.chapterVolumeSummary ?? '')}
+当前章节标题：${String(context.chapterTitle ?? '')}
+当前章节摘要：${String(context.chapterSummary ?? '')}
+当前章节状态：${String(context.chapterStatus ?? '')}
+当前章节预估字数：${String(context.chapterWordTarget ?? '')}
+目标字数：${targetWordCount || String(context.chapterWordTarget ?? '')}
+当前章节是否已有正文：${chapterHasExistingContent ? '有，但本次要整章重写' : '没有，本次从零起稿'}
+当前章节现有正文（如为空则代表从零起稿）：
+${chapterContent || '【空】'}
+
+相邻章节参考：
+${relatedChapters || '暂无'}
+
+相关世界观：
+${worldviewEntries || '暂无'}
+
+相关角色：
+${characters || '暂无'}
+
+相关组织：
+${organizations || '暂无'}
+
+角色关系：
+${relationships || '暂无'}
+
+成员归属：
+${memberships || '暂无'}
+
+可用灵感：
+${inspirationEntries || '暂无'}
+
+相关大纲：
+${outlineItems || '暂无'}
+
+当前项目启用 skills：
+${projectSkills || '暂无'}
+
+补充要求：
+${String(context.userPrompt ?? '')}
+
+硬要求：
+1. 生成的是“完整初稿”，不是续写，不是建议，不是分析。
+2. 成稿直接覆盖当前章节全部内容，所以必须完整可读。
+3. 如果当前正文为空，按从零起稿处理，不得虚构“上文已经写过”的内容。
+4. 强贴当前章节标题、章节摘要、分卷目标和大纲，不要跑偏到别的章节。
+5. 字数尽量贴近目标字数，允许上下浮动 10%。
+6. 优先写出可继续改稿的第一版正文，不要解释。`
+    })
+  }
+
   // ── 默认：大纲节点生成任务 ──
   return wrapPrompt({
     system:

@@ -26,7 +26,7 @@ import { DEFAULT_CHAPTER_WORD_TARGET, formatChapterWordTargetLabel, normalizeCha
 import { pickRelevantInspirationEntries } from '@/features/inspiration/relevance'
 import { loadEnabledProjectSkillsContext } from '@/features/projectSkills/context'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
-import { buildChapterAssistantContext } from '@/features/ai/chapterAssistantContext'
+import { buildChapterFirstDraftContext } from '@/features/ai/chapterAssistantContext'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import { formatVolumeLabel } from '@/features/workspace/outlineVolumes'
@@ -703,15 +703,12 @@ async function generateChapterFirstDraft(): Promise<void> {
         preview: getChapterPreviewText(item.content, '该章节暂无正文')
       }))
 
-    const context = buildChapterAssistantContext({
+    const currentChapterContent = currentPlainContent.value
+    const context = buildChapterFirstDraftContext({
       project,
       chapter,
       chapterVolume,
       relatedChapters,
-      recentMessages: appStore.messages.slice(-6).map((item) => ({
-        role: item.role,
-        content: item.content
-      })),
       worldviewEntries: appStore.worldviewEntries,
       characters: appStore.characters,
       organizations: appStore.organizations,
@@ -719,17 +716,14 @@ async function generateChapterFirstDraft(): Promise<void> {
       organizationMemberships: appStore.organizationMemberships,
       inspirationEntries: appStore.inspirationEntries,
       outlineItems: appStore.outlineItems.filter((item) => item.volumeId === chapter.volumeId),
-      selectedText: '',
-      responseMode: 'continue',
-      responseLength: targetWordCount >= 4500 ? 'long' : 'medium',
-      quickAction: 'AI 初稿',
-      userPrompt: `请直接生成当前章节的正文初稿，目标字数控制在 ${targetWordCount} 字左右，可上下浮动 10% 。务必严格参考当前章节标题、摘要、所属分卷剧情目标、已有大纲节点、当前项目文风、人物关系与组织立场，优先输出可直接进入编辑器继续改写的正文，不要解释，不要分点。`,
-      chapterContent: getPlainTextFromEditorContent(chapter.content ?? ''),
+      chapterContent: currentChapterContent,
+      targetWordCount,
+      userPrompt: `请生成这一章的完整初稿，目标字数控制在 ${targetWordCount} 字左右，可上下浮动 10%。如果当前正文为空，就从零起稿；如果当前正文不为空，也按整章重写处理，而不是续写。`,
       projectSkills: await loadEnabledProjectSkillsContext(project, 'draft')
     })
 
     const result = await window.characterArc.startAiStream(toIpcPayload({
-      task: 'chapter-assistant',
+      task: 'chapter-first-draft',
       settings: appStore.appSettings,
       context
     }))

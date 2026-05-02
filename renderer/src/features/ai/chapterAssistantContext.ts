@@ -51,6 +51,33 @@ type ChapterAssistantContextInput = {
   chapterContent: string                                // 当前章节的完整正文内容
 }
 
+type ChapterFirstDraftContextInput = {
+  project?: ProjectSummary
+  chapter?: ChapterDraft
+  chapterVolume?: OutlineVolume
+  relatedChapters: Array<{
+    title: string
+    summary: string
+    preview: string
+  }>
+  worldviewEntries: WorldviewEntry[]
+  characters: CharacterCard[]
+  organizations: OrganizationEntry[]
+  characterRelationships: CharacterRelationship[]
+  organizationMemberships: OrganizationMembership[]
+  inspirationEntries: InspirationEntry[]
+  outlineItems: OutlineItem[]
+  projectSkills?: Array<{
+    id: string
+    name: string
+    description: string
+    content: string
+  }>
+  chapterContent: string
+  targetWordCount: number
+  userPrompt: string
+}
+
 // 构建发送给 AI 的章节助理上下文对象：
 // 1. 解析项目写作风格预设
 // 2. 基于章节内容筛选最相关的灵感条目（最多6条）
@@ -134,6 +161,78 @@ export function buildChapterAssistantContext(input: ChapterAssistantContextInput
     responseMode: input.responseMode,
     responseLength: input.responseLength,
     quickAction: input.quickAction,
+    userPrompt: input.userPrompt
+  }
+}
+
+export function buildChapterFirstDraftContext(input: ChapterFirstDraftContextInput): Record<string, unknown> {
+  const writingStyle = buildProjectWritingStyleContext(input.project)
+  const normalizedChapterContent = input.chapterContent.trim()
+  const relevantInspirationEntries = pickRelevantInspirationEntries(
+    input.inspirationEntries,
+    {
+      title: input.chapter?.title,
+      summary: input.chapter?.summary,
+      content: normalizedChapterContent
+    },
+    6
+  )
+
+  return {
+    projectTitle: input.project?.title,
+    projectGenre: input.project?.genre,
+    writingStyleLabel: writingStyle.label,
+    writingStylePrompt: writingStyle.prompt,
+    chapterTitle: input.chapter?.title,
+    chapterSummary: input.chapter?.summary,
+    chapterStatus: input.chapter?.status,
+    chapterWordTarget: input.chapter?.wordTarget,
+    chapterContent: normalizedChapterContent,
+    chapterHasExistingContent: Boolean(normalizedChapterContent),
+    targetWordCount: input.targetWordCount,
+    chapterVolumeTitle: input.chapterVolume?.title,
+    chapterVolumeSummary: input.chapterVolume?.summary,
+    relatedChapters: input.relatedChapters,
+    worldviewEntries: input.worldviewEntries.map((entry) => ({
+      title: entry.title,
+      content: entry.content
+    })),
+    characters: input.characters.map((character) => ({
+      name: character.name,
+      role: character.role,
+      description: character.description
+    })),
+    organizations: input.organizations.map((organization) => ({
+      id: organization.id,
+      name: organization.name,
+      type: organization.type,
+      description: organization.description,
+      motto: organization.motto
+    })),
+    characterRelationships: input.characterRelationships.map((relationship) => ({
+      fromCharacterId: relationship.fromCharacterId,
+      toCharacterId: relationship.toCharacterId,
+      type: relationship.type,
+      description: relationship.description,
+      intensity: relationship.intensity
+    })),
+    organizationMemberships: input.organizationMemberships.map((membership) => ({
+      characterId: membership.characterId,
+      organizationId: membership.organizationId,
+      role: membership.role,
+      notes: membership.notes
+    })),
+    inspirationEntries: relevantInspirationEntries.map((entry) => ({
+      type: entry.type,
+      title: entry.title,
+      content: entry.content,
+      tags: entry.tags
+    })),
+    outlineItems: input.outlineItems.map((item) => ({
+      title: item.title,
+      summary: item.summary
+    })),
+    projectSkills: input.projectSkills ?? [],
     userPrompt: input.userPrompt
   }
 }

@@ -1,4 +1,6 @@
 import { buildRepairPrompt, buildTaskPrompt } from './aiPrompts'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
   requestAiText,
   requestAiTextStream
@@ -26,6 +28,41 @@ import {
 
 export type { AiTaskPayload } from './aiShared'
 
+const AI_PROMPT_LOG_DIR = join(process.cwd(), '.logs')
+const AI_PROMPT_LOG_FILE = join(AI_PROMPT_LOG_DIR, 'ai-prompts.log')
+
+async function writePromptLogFile(content: string): Promise<void> {
+  try {
+    await mkdir(AI_PROMPT_LOG_DIR, { recursive: true })
+    await appendFile(AI_PROMPT_LOG_FILE, `${content}\n`, 'utf8')
+  } catch (error) {
+    console.error('[ai] failed to write prompt log file:', error)
+  }
+}
+
+function logPrompt(label: string, settings: AppSettings, prompt: { system: string; user: string }, task?: AiTaskPayload): void {
+  const taskLabel = task?.task ?? 'unknown'
+  const provider = settings.provider || 'unknown'
+  const model = settings.model || 'unknown'
+  const timestamp = new Date().toISOString()
+  const content = [
+    '',
+    `===== AI 提示词 ${label} =====`,
+    `时间: ${timestamp}`,
+    `任务: ${taskLabel}`,
+    `提供者: ${provider}`,
+    `模型: ${model}`,
+    '--- SYSTEM ---',
+    prompt.system || '',
+    '--- USER ---',
+    prompt.user || '',
+    `===== END AI 提示词 ${label} =====`
+  ].join('\n')
+
+  console.log(`[ai] prompt logged: ${label} | task=${taskLabel} | provider=${provider} | model=${model} | file=${AI_PROMPT_LOG_FILE}`)
+  void writePromptLogFile(content)
+}
+
 /**
  * 从 AI 返回的文本中提取 JSON 对象。
  * 支持处理被 ```json 代码块包裹的情况，以及文本前后有多余内容的情况。
@@ -41,7 +78,7 @@ function extractJsonObject(text: string): AiTaskResult {
 
 /** 判断任务是否为结构化输出（需要返回 JSON），章节助理任务返回纯文本，不属于结构化任务 */
 function isStructuredTask(task: AiTaskPayload): boolean {
-  return task.task !== 'chapter-assistant'
+  return task.task !== 'chapter-assistant' && task.task !== 'chapter-first-draft'
 }
 
 /**
@@ -258,7 +295,7 @@ function normalizeInspirationPackResult(result: AiTaskResult): InspirationPackRe
  * 不同任务的校验规则不同：如世界观要求 title + content 非空，角色要求 name + description 非空。
  */
 function isTaskResultUsable(task: AiTaskPayload, result: AiTaskResult): boolean {
-  if (task.task === 'chapter-assistant') {
+  if (task.task === 'chapter-assistant' || task.task === 'chapter-first-draft') {
     return Boolean((result as ChapterAssistantResult).content?.trim())
   }
 
@@ -352,7 +389,7 @@ function isTaskResultUsable(task: AiTaskPayload, result: AiTaskResult): boolean 
  * 章节助理任务直接处理纯文本，其他任务先提取 JSON 再按类型标准化。
  */
 function normalizeTaskResult(task: AiTaskPayload, rawText: string): AiTaskResult {
-  if (task.task === 'chapter-assistant') {
+  if (task.task === 'chapter-assistant' || task.task === 'chapter-first-draft') {
     return normalizeAssistantText(rawText)
   }
 
@@ -405,7 +442,9 @@ async function resolveTaskResult(task: AiTaskPayload, settings: AppSettings, raw
   }
 
   // 用修复提示词让 AI 重新生成合法 JSON
-  const repairedText = await requestAiText(settings, buildRepairPrompt(task, rawText), task)
+  const repairPrompt = buildRepairPrompt(task, rawText)
+  logPrompt('REPAIR', settings, repairPrompt, task)
+  const repairedText = await requestAiText(settings, repairPrompt, task)
   const repairedResult = normalizeTaskResult(task, repairedText)
 
   if (!isTaskResultUsable(task, repairedResult)) {
@@ -425,6 +464,7 @@ export async function testAiConnection(rawSettings: AppSettings): Promise<{ prov
     user: 'Return CONNECTED'
   }
 
+  logPrompt('TEST', settings, probePrompt)
   const text = await requestAiText(settings, probePrompt)
 
   if (!text.trim()) {
@@ -445,6 +485,7 @@ export async function generateAiTask(task: AiTaskPayload): Promise<AiTaskResult>
   const settings = normalizeSettings(task.settings)
   validateSettings(settings)
   const prompt = buildTaskPrompt(task)
+  logPrompt('REQUEST', settings, prompt, task)
   const rawText = await requestAiText(settings, prompt, task)
   return resolveTaskResult(task, settings, rawText)
 }
@@ -458,13 +499,14 @@ export async function streamAiTask(
   handlers: AiStreamHandlers,
   signal: AbortSignal
 ): Promise<ChapterAssistantResult> {
-  if (task.task !== 'chapter-assistant') {
-    throw new Error('当前流式输出仅支持章节创作助理。')
+  if (task.task !== 'chapter-assistant' && task.task !== 'chapter-first-draft') {
+    throw new Error('当前流式输出仅支持章节创作助理和章节初稿生成。')
   }
 
   const settings = normalizeSettings(task.settings)
   validateSettings(settings)
   const prompt = buildTaskPrompt(task)
+  logPrompt('STREAM', settings, prompt, task)
   const rawText = await requestAiTextStream(settings, prompt, handlers, signal, task)
   return normalizeAssistantText(rawText)
 }

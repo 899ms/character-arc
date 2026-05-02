@@ -4,6 +4,7 @@ import { FAST_PERSIST_DELAY_MS, formatAutoSaveIntervalLabel, isLiveAutoSaveInter
 import { createDefaultWorkflowDocuments } from '@/features/novelWorkflow/documents'
 import { createDefaultNovelWorkflowStages } from '@/features/novelWorkflow/stages'
 import { DEFAULT_CHAPTER_WORD_TARGET, normalizeChapterWordTarget } from '@/features/chapters/wordTarget'
+import { formatProjectWordCount } from '@/features/projects/wordCount'
 import {
   buildVolumeGroups,
   createOutlineVolume as createWorkspaceVolume
@@ -64,7 +65,7 @@ interface ProjectWorkspacePayload {
     title: string
     genre: string
     novelLength: NovelLength
-    wordCount: string
+    wordCount?: string
     cover?: string
     writingStylePresetId?: string
     writingStylePrompt?: string
@@ -413,8 +414,26 @@ export const useAppStore = defineStore('app', () => {
   function updateCurrentWorkspace(updater: (workspace: ProjectWorkspaceData) => ProjectWorkspaceData): void {
     ensureProjectWorkspace(selectedProjectId.value)
     updateProjectWorkspace(selectedProjectId.value, updater)
+    syncProjectWordCount(selectedProjectId.value)
     syncSelectedChapter()
     scheduleWorkspaceSync()
+  }
+
+  function syncProjectWordCount(projectId: string): void {
+    const workspace = projectWorkspaces.value[projectId]
+    if (!workspace) {
+      return
+    }
+
+    const nextWordCount = formatProjectWordCount(workspace.chapters)
+    projects.value = projects.value.map((project) =>
+      project.id === projectId
+        ? {
+            ...project,
+            wordCount: nextWordCount
+          }
+        : project
+    )
   }
 
   /** 从持久化载荷恢复全局状态（主题、项目列表、工作区、设置），兼容旧版格式 */
@@ -545,12 +564,24 @@ export const useAppStore = defineStore('app', () => {
   /** 导入完整项目数据：创建新项目、分配独立工作区、切换到工作台 */
   function importProjectData(payload: ProjectImportPayload): void {
     const projectId = uniqueId('project')
+    const importedWorkspace = normalizeProjectWorkspaceData({
+      worldviewEntries: payload.worldviewEntries,
+      characters: payload.characters,
+      organizations: payload.organizations,
+      characterRelationships: payload.characterRelationships,
+      organizationMemberships: payload.organizationMemberships,
+      inspirationEntries: payload.inspirationEntries,
+      outlineVolumes: payload.outlineVolumes,
+      outlineItems: payload.outlineItems,
+      chapters: payload.chapters,
+      chapterVersions: payload.chapterVersions
+    })
     const project: ProjectSummary = {
       id: projectId,
       title: payload.project?.title?.trim() || '导入项目',
       genre: payload.project?.genre?.trim() || '未分类',
       novelLength: payload.project?.novelLength === 'short' ? 'short' : 'long',
-      wordCount: payload.project?.wordCount?.trim() || '已导入',
+      wordCount: formatProjectWordCount(importedWorkspace.chapters),
       lastEdited: '刚刚导入',
       cover: payload.project?.cover || 'linear-gradient(135deg, #9be15d 0%, #00e3ae 100%)',
       writingStylePresetId: payload.project?.writingStylePresetId?.trim() || 'cinematic-cool',
@@ -565,18 +596,7 @@ export const useAppStore = defineStore('app', () => {
     projects.value = [normalizeProjectSummary(project), ...projects.value]
     projectWorkspaces.value = {
       ...projectWorkspaces.value,
-      [projectId]: normalizeProjectWorkspaceData({
-        worldviewEntries: payload.worldviewEntries,
-        characters: payload.characters,
-        organizations: payload.organizations,
-        characterRelationships: payload.characterRelationships,
-        organizationMemberships: payload.organizationMemberships,
-        inspirationEntries: payload.inspirationEntries,
-        outlineVolumes: payload.outlineVolumes,
-        outlineItems: payload.outlineItems,
-        chapters: payload.chapters,
-        chapterVersions: payload.chapterVersions
-      })
+      [projectId]: importedWorkspace
     }
     selectedProjectId.value = project.id
     pendingChapterInsertion.value = null
@@ -878,13 +898,14 @@ export const useAppStore = defineStore('app', () => {
     const projectId = uniqueId('project')
     const nextVolumes = payload.outlineVolumes?.length ? payload.outlineVolumes : [createWorkspaceVolume()]
     const nextChapters = payload.chapters?.length ? payload.chapters : [buildStarterChapter(nextVolumes[0].id)]
+    const computedWordCount = formatProjectWordCount(nextChapters)
 
     projects.value.unshift(normalizeProjectSummary({
       id: projectId,
       title: payload.project.title,
       genre: payload.project.genre,
       novelLength: payload.project.novelLength,
-      wordCount: payload.project.wordCount,
+      wordCount: computedWordCount,
       lastEdited: '刚刚创建',
       cover: payload.project.cover || 'linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)',
       writingStylePresetId: payload.project.writingStylePresetId?.trim() || 'cinematic-cool',
@@ -926,7 +947,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /** 快速创建项目（仅标题/题材/长短篇/字数展示），自动生成默认分卷和首章 */
-  function createProject(payload: { title: string; genre: string; novelLength: NovelLength; wordCount: string }): void {
+  function createProject(payload: { title: string; genre: string; novelLength: NovelLength }): void {
     const starterVolume = createWorkspaceVolume()
     createProjectWorkspace({
       project: payload,
@@ -964,7 +985,6 @@ export const useAppStore = defineStore('app', () => {
             title: payload.title?.trim() || project.title,
             genre: payload.genre?.trim() || project.genre,
             novelLength: payload.novelLength !== undefined ? payload.novelLength : project.novelLength,
-            wordCount: payload.wordCount?.trim() || project.wordCount,
             lastEdited: payload.lastEdited?.trim() || '刚刚更新',
             cover: payload.cover || project.cover,
             writingStylePresetId: payload.writingStylePresetId?.trim() || project.writingStylePresetId,

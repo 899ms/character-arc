@@ -165,7 +165,7 @@ export interface ProjectSummary {
   genre: string
   /** 小说长度分类：长篇 / 短篇 */
   novelLength: NovelLength
-  /** 字数展示/进度文案，如"待统计"、"已写 12 万字" */
+  /** 由章节正文自动汇总出的项目累计字数展示 */
   wordCount: string
   /** 最后编辑时间的人类可读文本 */
   lastEdited: string

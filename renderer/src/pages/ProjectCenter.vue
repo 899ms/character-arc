@@ -88,14 +88,12 @@ function submitProject(payload: {
   title: string
   genre: string
   novelLength: ProjectSummary['novelLength']
-  wordCount: string
   cover: string
 }): void {
   appStore.updateProject(payload.id, {
     title: payload.title,
     genre: payload.genre,
     novelLength: payload.novelLength,
-    wordCount: payload.wordCount,
     cover: payload.cover
   })
   editorVisible.value = false
@@ -180,4 +178,3 @@ function requestDeleteProject(projectId: string): void {
   color: var(--arc-danger);
 }
 </style>
-

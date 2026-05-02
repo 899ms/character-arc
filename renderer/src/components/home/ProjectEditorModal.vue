@@ -17,7 +17,6 @@ const emit = defineEmits<{
     title: string
     genre: string
     novelLength: NovelLength
-    wordCount: string
     cover: string
   }): void
   (e: 'pickCover'): void
@@ -29,7 +28,6 @@ const form = reactive({
   title: '',
   genre: '',
   novelLength: 'long' as NovelLength,
-  wordCount: '',
   cover: ''
 })
 
@@ -39,7 +37,6 @@ watch(
     form.title = project?.title ?? ''
     form.genre = project?.genre ?? ''
     form.novelLength = project?.novelLength === 'short' ? 'short' : 'long'
-    form.wordCount = project?.wordCount ?? ''
     form.cover = project?.cover ?? ''
   },
   { immediate: true }
@@ -73,7 +70,6 @@ function submitForm(): void {
     title: form.title,
     genre: form.genre,
     novelLength: form.novelLength,
-    wordCount: form.wordCount,
     cover: form.cover
   })
 }
@@ -141,10 +137,6 @@ function clearCover(): void {
             <span>{{ option.description }}</span>
           </button>
         </div>
-      </n-form-item>
-
-      <n-form-item label="字数展示">
-        <n-input v-model:value="form.wordCount" placeholder="例如：12.5万字 / 待统计" />
       </n-form-item>
     </n-form>
 

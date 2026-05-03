@@ -2245,6 +2245,7 @@ export const useAppStore = defineStore('app', () => {
     updateWorkflowDocuments,
     appendWorkflowDocumentEntry,
     workflowDocuments,
+    persistWorkspace,
     updateChapter,
     updateChapterContent,
     updateChapterSelection,

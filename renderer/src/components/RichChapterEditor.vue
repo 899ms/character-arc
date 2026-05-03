@@ -1,156 +1,165 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import CharacterCount from '@tiptap/extension-character-count'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
-import { Heading2, Heading3, Italic, List, ListOrdered, Pilcrow, Quote, Redo2, RotateCcw, Underline as UnderlineIcon } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, Heading2, Heading3, Italic, List, ListOrdered, Pilcrow, Quote, Redo2, RotateCcw, Search, Underline as UnderlineIcon, X } from 'lucide-vue-next'
+import { EditorSearchExtension } from '@/features/chapters/editorSearch'
 import { ensureEditorHtmlContent, serializePlainTextToHtml } from '@/features/chapters/editorContent'
 import type { ChapterInsertionRequest, ChapterSelectionState } from '@/types/app'
 
 const props = defineProps<{
-  chapterId: string // 当前章节 ID
-  modelValue: string // 章节正文 HTML 内容（v-model 双向绑定）
-  insertionRequest: ChapterInsertionRequest | null // AI 插入请求，非空时触发内容插入
+  chapterId: string
+  modelValue: string
+  insertionRequest: ChapterInsertionRequest | null
 }>()
 
-// 自定义事件：update:modelValue 用于双向绑定，consumeInsertion 确认插入已消费，selectionChange 通知选区变化
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   consumeInsertion: [requestId: string]
   selectionChange: [selection: ChapterSelectionState | null]
 }>()
 
-const isFocused = ref(false) // 编辑器是否获得焦点
+const isFocused = ref(false)
 
-// Tiptap 编辑器选区快照的源类型定义
+// ── 搜索/替换状态 ─────────────────────────────
+const showSearch = ref(false)
+const searchTerm = ref('')
+const replaceTerm = ref('')
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const matchCount = ref(0)
+const currentMatchIndex = ref(0)
+
+function openSearch() {
+  showSearch.value = true
+  nextTick(() => searchInputRef.value?.focus())
+}
+
+function closeSearch() {
+  showSearch.value = false
+  searchTerm.value = ''
+  replaceTerm.value = ''
+  matchCount.value = 0
+  currentMatchIndex.value = 0
+  editor.value?.commands.setSearchTerm('')
+  editor.value?.commands.focus()
+}
+
+function syncSearchRefs() {
+  const storage = editor.value?.storage['editorSearch'] as { matches: unknown[]; currentIndex: number } | undefined
+  matchCount.value = storage?.matches?.length ?? 0
+  currentMatchIndex.value = storage?.currentIndex ?? 0
+}
+
+function handleSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { closeSearch(); return }
+  if (e.key === 'Enter') {
+    if (e.shiftKey) { editor.value?.commands.prevSearchMatch() } else { editor.value?.commands.nextSearchMatch() }
+    syncSearchRefs()
+  }
+}
+
+function handleReplaceKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { closeSearch() }
+  if (e.key === 'Enter') { replaceOne() }
+}
+
+function replaceOne() {
+  editor.value?.commands.replaceCurrentMatch(replaceTerm.value)
+  syncSearchRefs()
+}
+
+function replaceAll() {
+  editor.value?.commands.replaceAllMatches(replaceTerm.value)
+  syncSearchRefs()
+}
+
+watch(searchTerm, (term) => {
+  editor.value?.commands.setSearchTerm(term)
+  syncSearchRefs()
+})
+
+// ── 选区快照 ──────────────────────────────────
 type SelectionSnapshotSource = {
   state: {
-    selection: {
-      from: number
-      to: number
-      empty: boolean
-    }
-    doc: {
-      textBetween: (from: number, to: number, blockSeparator?: string) => string
-    }
+    selection: { from: number; to: number; empty: boolean }
+    doc: { textBetween: (from: number, to: number, blockSeparator?: string) => string }
   }
 }
 
-// 向父组件发送当前选中文本的快照（用于 AI 助手获取选区上下文）
 function emitSelectionSnapshot(instance?: SelectionSnapshotSource | null): void {
   const source = instance ?? editor.value
-  if (!source) {
-    emit('selectionChange', null)
-    return
-  }
-
+  if (!source) { emit('selectionChange', null); return }
   const { from, to, empty } = source.state.selection
-  if (empty) {
-    emit('selectionChange', null)
-    return
-  }
-
+  if (empty) { emit('selectionChange', null); return }
   const text = source.state.doc.textBetween(from, to, '\n\n').trim()
-  emit(
-    'selectionChange',
-    text
-      ? {
-          chapterId: props.chapterId,
-          text
-        }
-      : null
-  )
+  emit('selectionChange', text ? { chapterId: props.chapterId, text } : null)
 }
 
-// 初始化 Tiptap 富文本编辑器，配置扩展、占位符、字数统计等
+// ── TipTap 编辑器 ─────────────────────────────
 const editor = useEditor({
   content: ensureEditorHtmlContent(props.modelValue),
   extensions: [
-    StarterKit.configure({
-      heading: {
-        levels: [2, 3]
-      }
-    }),
+    StarterKit.configure({ heading: { levels: [2, 3] } }),
     Underline,
-    Placeholder.configure({
-      placeholder: '从这里开始创作...'
-    }),
-    CharacterCount
+    Placeholder.configure({ placeholder: '从这里开始创作...' }),
+    CharacterCount,
+    EditorSearchExtension
   ],
   editorProps: {
-    attributes: {
-      class: 'chapter-rich-text arc-scrollbar'
+    attributes: { class: 'chapter-rich-text arc-scrollbar' },
+    handleKeyDown(_, event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        openSearch()
+        return true
+      }
+      return false
     }
   },
-  onFocus: () => {
-    isFocused.value = true
-  },
+  onFocus: () => { isFocused.value = true },
   onBlur: ({ editor: instance }) => {
     isFocused.value = false
     emitSelectionSnapshot(instance)
   },
-  onSelectionUpdate: ({ editor: instance }) => {
-    emitSelectionSnapshot(instance)
-  },
+  onSelectionUpdate: ({ editor: instance }) => { emitSelectionSnapshot(instance) },
   onUpdate: ({ editor: instance }) => {
     const html = instance.getHTML()
-    if (html !== props.modelValue) {
-      emit('update:modelValue', html)
-    }
+    if (html !== props.modelValue) emit('update:modelValue', html)
   }
 })
 
-// 实时字数统计（从 Tiptap 的 characterCount 扩展获取）
 const liveCharacterCount = computed(() => editor.value?.storage.characterCount.characters() ?? 0)
 
-// 处理 AI 插入请求：根据插入模式（追加/替换选区/光标处）将内容插入编辑器
 function applyInsertionRequest(request: ChapterInsertionRequest): void {
   const instance = editor.value
-  if (!instance || request.chapterId !== props.chapterId) {
-    return
-  }
-
+  if (!instance || request.chapterId !== props.chapterId) return
   const htmlContent = serializePlainTextToHtml(request.content)
-
-  // Keep AI insertion inside the editor so we can respect the current selection
-  // and avoid brittle string slicing against serialized HTML.
   if (request.mode === 'append') {
     instance.chain().focus('end').insertContent(htmlContent).run()
     emit('consumeInsertion', request.id)
     return
   }
-
   const selection = instance.state.selection
   if (request.mode === 'replace-selection' && !selection.empty) {
     instance.chain().focus().insertContentAt({ from: selection.from, to: selection.to }, htmlContent).run()
     emit('consumeInsertion', request.id)
     return
   }
-
   instance.chain().focus().insertContent(htmlContent).run()
   emit('consumeInsertion', request.id)
 }
 
-// Keep editor state in sync with external changes such as chapter switching or restoring a history snapshot.
 watch(
   () => [props.chapterId, props.modelValue] as const,
   ([chapterId, value], previousValue) => {
     const instance = editor.value
-    if (!instance) {
-      return
-    }
-
+    if (!instance) return
     const nextHtml = ensureEditorHtmlContent(value)
-    if (nextHtml === instance.getHTML()) {
-      return
-    }
-
-    instance.commands.setContent(nextHtml, {
-      emitUpdate: false
-    })
-
+    if (nextHtml === instance.getHTML()) return
+    instance.commands.setContent(nextHtml, { emitUpdate: false })
     if (!previousValue || previousValue[0] !== chapterId) {
       instance.commands.focus('end')
       emit('selectionChange', null)
@@ -158,15 +167,11 @@ watch(
   }
 )
 
-// AI insertion is applied inside Tiptap so we can preserve rich-text structure instead of slicing raw HTML strings.
 watch(
   () => [props.insertionRequest?.id, props.chapterId, editor.value] as const,
   () => {
     const request = props.insertionRequest
-    if (!request) {
-      return
-    }
-
+    if (!request) return
     applyInsertionRequest(request)
   }
 )
@@ -257,6 +262,14 @@ onBeforeUnmount(() => {
         <button
           class="toolbar-button icon-only"
           type="button"
+          :title="'搜索 (Ctrl+F)'"
+          @click="openSearch"
+        >
+          <Search :size="15" />
+        </button>
+        <button
+          class="toolbar-button icon-only"
+          type="button"
           :disabled="!editor?.can().chain().focus().undo().run()"
           @click="editor?.chain().focus().undo().run()"
         >
@@ -272,6 +285,48 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+
+    <!-- 搜索/替换栏 -->
+    <Transition name="search-bar">
+      <div v-if="showSearch" class="search-bar">
+        <div class="search-row">
+          <div class="search-input-wrap">
+            <Search :size="13" class="search-icon" />
+            <input
+              ref="searchInputRef"
+              v-model="searchTerm"
+              class="search-input"
+              type="text"
+              placeholder="搜索..."
+              @keydown="handleSearchKeydown"
+            />
+            <span v-if="searchTerm" class="search-count">
+              {{ matchCount ? `${currentMatchIndex + 1}/${matchCount}` : '无结果' }}
+            </span>
+          </div>
+          <button class="search-nav-btn" title="上一个 (Shift+Enter)" :disabled="!matchCount" @click="editor?.commands.prevSearchMatch(); syncSearchRefs()">
+            <ChevronUp :size="14" />
+          </button>
+          <button class="search-nav-btn" title="下一个 (Enter)" :disabled="!matchCount" @click="editor?.commands.nextSearchMatch(); syncSearchRefs()">
+            <ChevronDown :size="14" />
+          </button>
+          <button class="search-close-btn" title="关闭 (Esc)" @click="closeSearch">
+            <X :size="14" />
+          </button>
+        </div>
+        <div class="search-row">
+          <input
+            v-model="replaceTerm"
+            class="search-input replace-input"
+            type="text"
+            placeholder="替换为..."
+            @keydown="handleReplaceKeydown"
+          />
+          <button class="search-action-btn" :disabled="!matchCount" @click="replaceOne">替换</button>
+          <button class="search-action-btn" :disabled="!matchCount" @click="replaceAll">全部替换</button>
+        </div>
+      </div>
+    </Transition>
 
     <EditorContent v-if="editor" :editor="editor" class="rich-editor-content" />
   </div>
@@ -376,8 +431,163 @@ onBeforeUnmount(() => {
   margin-right: 4px;
 }
 
+/* ── 搜索/替换栏 ── */
+.search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid var(--arc-border);
+  background: var(--arc-bg-sidebar);
+  padding: 8px 10px;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 4px;
+  background: var(--arc-bg-surface);
+  padding: 0 8px;
+}
+
+.search-icon {
+  color: var(--arc-text-hint);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--arc-text-hint);
+}
+
+.replace-input {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--arc-border);
+  border-radius: 4px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 0 8px;
+}
+
+.replace-input:focus {
+  border-color: color-mix(in srgb, var(--arc-primary) 48%, var(--arc-border));
+}
+
+.search-count {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.search-nav-btn,
+.search-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--arc-border);
+  border-radius: 4px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.search-nav-btn:hover:not(:disabled),
+.search-close-btn:hover {
+  border-color: var(--arc-border-strong);
+  color: var(--arc-primary);
+}
+
+.search-nav-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.search-action-btn {
+  height: 30px;
+  border: 1px solid var(--arc-border);
+  border-radius: 4px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.search-action-btn:hover:not(:disabled) {
+  border-color: var(--arc-border-strong);
+  color: var(--arc-primary);
+}
+
+.search-action-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* 搜索栏展开动画 */
+.search-bar-enter-active,
+.search-bar-leave-active {
+  transition: all 0.18s ease;
+  overflow: hidden;
+}
+
+.search-bar-enter-from,
+.search-bar-leave-to {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.search-bar-enter-to,
+.search-bar-leave-from {
+  max-height: 120px;
+  opacity: 1;
+}
+
+/* ── 搜索高亮（全局，因为 TipTap 编辑器内容在 :deep 范围外无法穿透） ── */
+.rich-editor-content :deep(.search-hl) {
+  background: color-mix(in srgb, #f59e0b 35%, transparent);
+  border-radius: 2px;
+}
+
+.rich-editor-content :deep(.search-hl-cur) {
+  background: color-mix(in srgb, #f59e0b 70%, transparent);
+  outline: 1px solid #f59e0b;
+}
+
+/* ── 编辑器内容区 ── */
 .rich-editor-content {
-  /* Lock the editor viewport to the available column height so long chapters scroll internally. */
   min-height: 0;
   height: 100%;
   flex: 1;

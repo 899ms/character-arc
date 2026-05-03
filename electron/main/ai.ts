@@ -21,6 +21,7 @@ import {
   type OutlineResult,
   type PlotThreadDetectEntry,
   type PlotThreadDetectResult,
+  type ChapterScenePlanResult,
   type ProjectBootstrapResult,
   type ReferenceStyleChunkResult,
   type ReferenceStyleAnalysisResult,
@@ -291,8 +292,7 @@ function normalizeInspirationPackResult(result: AiTaskResult): InspirationPackRe
   }
 }
 
-/** 标准化章节伏笔识别结果，限制最多 6 条，每条限制标签最多 3 个 */
-function normalizePlotThreadDetectResult(result: AiTaskResult): PlotThreadDetectResult {
+/** 标准化章节伏笔识别结果，限制最多 6 条，每条限制标签最多 3 个 */function normalizePlotThreadDetectResult(result: AiTaskResult): PlotThreadDetectResult {
   const payload = result as Partial<PlotThreadDetectResult>
   const entries = Array.isArray(payload.entries)
     ? payload.entries.slice(0, 6).map((entry) => {
@@ -311,8 +311,20 @@ function normalizePlotThreadDetectResult(result: AiTaskResult): PlotThreadDetect
   return { entries }
 }
 
+/** 标准化章节场景规划结果，限制最多 4 个场景节拍 */
+function normalizeChapterScenePlanResult(result: AiTaskResult): ChapterScenePlanResult {
+  const payload = result as Partial<ChapterScenePlanResult>
+  const scenes = Array.isArray(payload.scenes)
+    ? payload.scenes
+        .slice(0, 4)
+        .map((s) => ({ focus: String((s as { focus?: unknown }).focus ?? '').trim() }))
+        .filter((s) => s.focus)
+    : []
+
+  return { scenes }
+}
+
 /**
- * 校验标准化后的结果是否满足基本可用性要求。
  * 不同任务的校验规则不同：如世界观要求 title + content 非空，角色要求 name + description 非空。
  */
 function isTaskResultUsable(task: AiTaskPayload, result: AiTaskResult): boolean {
@@ -375,6 +387,11 @@ function isTaskResultUsable(task: AiTaskPayload, result: AiTaskResult): boolean 
   if (task.task === 'plot-thread-detect') {
     const payload = result as PlotThreadDetectResult
     return payload.entries.length > 0
+  }
+
+  if (task.task === 'chapter-scene-plan') {
+    const payload = result as ChapterScenePlanResult
+    return payload.scenes.length >= 2
   }
 
   if (task.task === 'outline-batch' || task.task === 'outline-chain') {
@@ -443,6 +460,8 @@ function normalizeTaskResult(task: AiTaskPayload, rawText: string): AiTaskResult
       return normalizeInspirationPackResult(parsed)
     case 'plot-thread-detect':
       return normalizePlotThreadDetectResult(parsed)
+    case 'chapter-scene-plan':
+      return normalizeChapterScenePlanResult(parsed)
     case 'outline-item':
     default:
       return normalizeOutlineResult(parsed)

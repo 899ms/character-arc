@@ -68,6 +68,8 @@ const chapterDraftStreamId = ref<string | null>(null)
 const chapterDraftStreamingContent = ref('')
 const chapterDraftExecutionLabel = ref('')
 let removeChapterDraftStreamListener: (() => void) | null = null
+const sceneResolveCallback = ref<((text: string) => void) | null>(null)
+const sceneRejectCallback = ref<((err: Error) => void) | null>(null)
 const readingMode = ref(false) // 是否处于阅读模式
 const compactSidebarVisible = ref(false) // 紧凑模式下章节目录抽屉的显示状态
 const compactInsightsVisible = ref(false) // 紧凑模式下章节参考抽屉的显示状态
@@ -702,6 +704,28 @@ async function generateNextOutlineChain(): Promise<void> {
   }
 }
 
+async function streamOneScene(sceneContext: Record<string, unknown>, displayAccumulated: string): Promise<string> {
+  chapterDraftStreamingContent.value = displayAccumulated ? displayAccumulated + '\n\n' : ''
+
+  const result = await window.characterArc.startAiStream(toIpcPayload({
+    task: 'chapter-first-draft',
+    settings: appStore.appSettings,
+    context: sceneContext
+  }))
+
+  const streamId = (result.result as { streamId?: string } | undefined)?.streamId
+  if (!result.success || !streamId) {
+    throw new Error(result.error ?? 'AI 初稿生成启动失败')
+  }
+
+  chapterDraftStreamId.value = streamId
+
+  return new Promise<string>((resolve, reject) => {
+    sceneResolveCallback.value = resolve
+    sceneRejectCallback.value = reject
+  })
+}
+
 async function generateChapterFirstDraft(): Promise<void> {
   const chapter = appStore.selectedChapter
   const project = appStore.currentProject
@@ -731,13 +755,11 @@ async function generateChapterFirstDraft(): Promise<void> {
         preview: getChapterPreviewText(item.content, '该章节暂无正文')
       }))
 
-    // Tier 2：当前分卷内其他章节的摘要，排除 Tier 1 中已包含的
     const relatedTitles = new Set(relatedChapters.map((r) => r.title))
     const volumeChapterSummaries = appStore.chapters
       .filter((c) => c.volumeId === chapter.volumeId && c.id !== chapter.id && !relatedTitles.has(c.title))
       .map((c) => ({ title: c.title, summary: c.summary }))
 
-    // Tier 3：全书第 1 章摘要（基调参照，仅当不在前两层时添加）
     const firstChapter = appStore.chapters[0]
     const novelOpenerSummary =
       firstChapter && firstChapter.id !== chapter.id && !relatedTitles.has(firstChapter.title)
@@ -745,7 +767,7 @@ async function generateChapterFirstDraft(): Promise<void> {
         : undefined
 
     const currentChapterContent = currentPlainContent.value
-    const context = buildChapterFirstDraftContext({
+    const baseContext = buildChapterFirstDraftContext({
       project,
       chapter,
       chapterVolume,
@@ -766,26 +788,63 @@ async function generateChapterFirstDraft(): Promise<void> {
       projectSkills: await loadEnabledProjectSkillsContext(project, 'draft')
     })
 
-    const result = await window.characterArc.startAiStream(toIpcPayload({
-      task: 'chapter-first-draft',
+    // Step 1: plan scene beats
+    chapterDraftExecutionLabel.value = '正在规划场景结构…'
+    const planResult = await window.characterArc.generateAi(toIpcPayload({
+      task: 'chapter-scene-plan',
       settings: appStore.appSettings,
-      context
+      context: {
+        chapterTitle: chapter.title,
+        chapterSummary: chapter.summary,
+        chapterVolumeSummary: chapterVolume.summary,
+        targetWordCount
+      }
     }))
+    const planPayload = planResult.success ? (planResult.result as { scenes?: Array<{ focus: string }> }) : null
+    const scenes =
+      Array.isArray(planPayload?.scenes) && planPayload!.scenes.length >= 2
+        ? planPayload!.scenes
+        : [{ focus: '前半段：建立场景与推进冲突' }, { focus: '后半段：深化冲突并收束本章' }]
 
-    const streamId = (result.result as { streamId?: string } | undefined)?.streamId
-    if (!result.success || !streamId) {
-      throw new Error(result.error ?? 'AI 初稿生成启动失败')
+    // Step 2: stream each scene in sequence
+    let accumulated = ''
+    for (let i = 0; i < scenes.length; i++) {
+      chapterDraftExecutionLabel.value = `正在生成第 ${i + 1} 段（共 ${scenes.length} 段）…`
+      const sceneWordTarget = Math.round(targetWordCount / scenes.length)
+      const sceneContext: Record<string, unknown> = {
+        ...baseContext,
+        targetWordCount: sceneWordTarget,
+        userPrompt: `这是分段生成的第 ${i + 1} 段（共 ${scenes.length} 段），本段目标字数约 ${sceneWordTarget} 字。`,
+        sceneIndex: i + 1,
+        totalScenes: scenes.length,
+        sceneFocus: scenes[i].focus,
+        sceneWordTarget,
+        previousDraftText: accumulated ? accumulated.slice(-800) : undefined
+      }
+      const sceneText = await streamOneScene(sceneContext, accumulated)
+      if (sceneText) {
+        accumulated += (accumulated ? '\n\n' : '') + sceneText
+      }
     }
 
-    chapterDraftStreamId.value = streamId
-    chapterDraftExecutionLabel.value = '正在生成正文初稿'
+    // Step 3: write final content to store
+    if (accumulated) {
+      chapterDraftExecutionLabel.value = '正在覆盖当前章节'
+      appStore.updateChapterContent(ensureEditorHtmlContent(accumulated))
+      message.success(`AI 已覆盖当前章节，目标约 ${formatChapterWordTargetLabel(currentTargetWordCount.value)}`)
+    } else {
+      message.warning('AI 没有返回可用的初稿内容')
+    }
+    resetChapterDraftStreamingState()
   } catch (error) {
-    chapterDraftStreamId.value = null
+    const isCanceled = error instanceof Error && error.message === 'canceled'
+    if (isCanceled) {
+      message.info('已停止 AI 初稿生成，当前章节内容保持不变')
+    } else {
+      message.error(error instanceof Error ? error.message : 'AI 初稿生成失败')
+    }
     chapterDraftStreamingContent.value = ''
-    chapterDraftExecutionLabel.value = ''
-    isStoppingChapterDraft.value = false
-    message.error(error instanceof Error ? error.message : 'AI 初稿生成失败')
-    isGeneratingChapterDraft.value = false
+    resetChapterDraftStreamingState()
   }
 }
 
@@ -953,12 +1012,18 @@ function handleChapterDraftStreamEvent(payload: CharacterArcAiStreamEvent): void
   }
 
   if (payload.type === 'chunk') {
-    chapterDraftExecutionLabel.value = '正在生成正文初稿'
     chapterDraftStreamingContent.value += payload.delta
     return
   }
 
   if (payload.type === 'done') {
+    if (sceneResolveCallback.value) {
+      const resolve = sceneResolveCallback.value
+      sceneResolveCallback.value = null
+      sceneRejectCallback.value = null
+      resolve((payload.content ?? '').trim())
+      return
+    }
     const finalReply = (payload.content ?? chapterDraftStreamingContent.value).trim()
     if (finalReply) {
       chapterDraftExecutionLabel.value = '正在覆盖当前章节'
@@ -972,12 +1037,26 @@ function handleChapterDraftStreamEvent(payload: CharacterArcAiStreamEvent): void
   }
 
   if (payload.type === 'canceled') {
+    if (sceneRejectCallback.value) {
+      const reject = sceneRejectCallback.value
+      sceneResolveCallback.value = null
+      sceneRejectCallback.value = null
+      reject(new Error('canceled'))
+      return
+    }
     message.info('已停止 AI 初稿生成，当前章节内容保持不变')
     resetChapterDraftStreamingState()
     return
   }
 
   if (payload.type === 'error') {
+    if (sceneRejectCallback.value) {
+      const reject = sceneRejectCallback.value
+      sceneResolveCallback.value = null
+      sceneRejectCallback.value = null
+      reject(new Error(payload.error || 'AI 初稿生成失败'))
+      return
+    }
     message.error(payload.error || 'AI 初稿生成失败')
     resetChapterDraftStreamingState()
   }

@@ -26,6 +26,7 @@ export type AiTaskName =
   | 'chapter-assistant'   // 章节创作助理（支持流式）
   | 'chapter-first-draft' // 章节初稿生成（支持流式）
   | 'chapter-summarize'   // 章节摘要自动生成（4维结构化文本）
+  | 'chapter-scene-plan'  // 分段初稿前的场景规划（2-3段，返回 JSON）
   | 'plot-thread-detect'  // 从章节正文自动识别潜在伏笔
   | 'project-bootstrap'   // 项目初始化，批量生成世界观 + 大纲
   | 'chapter-analysis'    // 章节质量分析
@@ -188,6 +189,12 @@ export type InspirationPackResult = {
   entries: InspirationResult[]
 }
 
+/** AI 返回的章节场景规划结果（分段初稿前的场景分割）*/
+export type ChapterScenePlanResult = {
+  /** 2-3 个场景节拍，每条描述本段的写作重点 */
+  scenes: Array<{ focus: string }>
+}
+
 /** AI 返回的单条伏笔识别结果 */
 export type PlotThreadDetectEntry = {
   /** 伏笔标题（≤20 字） */
@@ -219,6 +226,7 @@ export type AiTaskResult =
   | ReferenceStyleAnalysisResult
   | InspirationPackResult
   | PlotThreadDetectResult
+  | ChapterScenePlanResult
 
 /** 提示词对：系统提示词 + 用户提示词 */
 export type PromptPair = {
@@ -334,8 +342,11 @@ export function resolveMaxTokens(task?: AiTaskPayload): number | undefined {
     case 'workflow-documents':
       // 分析和灵感包输出中等长度
       return 1200
+    case 'chapter-scene-plan':
+      // 场景规划只需极短 JSON，2-3 条焦点描述
+      return 400
     case 'chapter-first-draft':
-      return 2200
+      return 4000
     case 'chapter-assistant':
       // 章节助理根据用户选择的响应长度动态调整
       switch (String(task.context.responseLength ?? 'medium')) {

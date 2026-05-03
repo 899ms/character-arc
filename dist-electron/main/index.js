@@ -388,6 +388,10 @@ const PROMPT_TASK_PROFILES = {
     label: "章节摘要生成",
     defaultCapabilities: ["settings", "chapters", "analysis"]
   },
+  "chapter-scene-plan": {
+    label: "章节场景规划",
+    defaultCapabilities: ["settings", "chapters", "outline"]
+  },
   "plot-thread-detect": {
     label: "章节伏笔识别",
     defaultCapabilities: ["settings", "chapters", "analysis"]
@@ -1265,7 +1269,44 @@ ${String(context.userPrompt ?? "")}
 4. 强贴当前章节标题、章节摘要、分卷目标和大纲，不要跑偏到别的章节。
 5. 字数尽量贴近目标字数，允许上下浮动 10%。
 6. 如果”未收伏笔 / 活跃剧情线”不为空，本章内容不得与这些线索相矛盾；若本章计划收尾某条线，请在正文中给出明确的收束情节。
-7. 优先写出可继续改稿的第一版正文，不要解释。`
+7. 优先写出可继续改稿的第一版正文，不要解释。${context.sceneIndex != null ? `
+
+== 分段生成说明 ==
+本次生成的是第 ${String(context.sceneIndex)} 段（共 ${String(context.totalScenes ?? 1)} 段）。
+本段写作重点：${String(context.sceneFocus ?? "")}
+本段目标字数：${String(context.sceneWordTarget ?? targetWordCount)} 字左右。
+${context.previousDraftText ? `前序已生成内容（末尾节选，仅供衔接参考）：
+...${String(context.previousDraftText)}` : "（本段为第一段，无前序内容）"}
+
+分段硬要求：
+- 只写本段，不要写其他段的内容。
+- 与前序内容无缝衔接，保持人物状态、场景和情绪连贯。
+- 直接开始正文，不要标注”第X段”或任何标记。
+- 不要总结或预告后续内容。` : ""}`
+    });
+  }
+  if (task.task === "chapter-scene-plan") {
+    const sceneCount = (() => {
+      const words = Number(context.targetWordCount ?? 0);
+      if (words <= 0 || words <= 1500) return 2;
+      if (words <= 3500) return 3;
+      return 4;
+    })();
+    return wrapPrompt({
+      system: "你是小说章节场景规划助手。请只返回 JSON 对象，不要返回 Markdown 或多余文字。字段必须包含 scenes 数组。",
+      user: `请将以下章节规划为 ${sceneCount} 个连续场景段落，每段用一句话（20-40字）描述写作重点。
+
+章节标题：${String(context.chapterTitle ?? "")}
+章节摘要：${String(context.chapterSummary ?? "")}
+分卷目标：${String(context.chapterVolumeSummary ?? "")}
+目标字数：${String(context.targetWordCount ?? "")} 字（每段约 ${Math.round(Number(context.targetWordCount ?? 0) / sceneCount)} 字）
+
+要求：
+1. 每段 focus 描述本段的核心动作、冲突或转折，不要空泛
+2. 段与段之间要有明确的推进关系（时间/情绪/信息/局势变化）
+3. 返回 ${sceneCount} 条，不多不少
+
+返回格式：{“scenes”:[{“focus”:””}]}`
     });
   }
   if (task.task === "chapter-summarize") {
@@ -1511,8 +1552,10 @@ function resolveMaxTokens(task) {
     case "outline-chain":
     case "workflow-documents":
       return 1200;
+    case "chapter-scene-plan":
+      return 400;
     case "chapter-first-draft":
-      return 2200;
+      return 4e3;
     case "chapter-assistant":
       switch (String(task.context.responseLength ?? "medium")) {
         case "short":
@@ -2086,6 +2129,11 @@ function normalizePlotThreadDetectResult(result) {
   }) : [];
   return { entries };
 }
+function normalizeChapterScenePlanResult(result) {
+  const payload = result;
+  const scenes = Array.isArray(payload.scenes) ? payload.scenes.slice(0, 4).map((s) => ({ focus: String(s.focus ?? "").trim() })).filter((s) => s.focus) : [];
+  return { scenes };
+}
 function isTaskResultUsable(task, result) {
   if (task.task === "chapter-assistant" || task.task === "chapter-first-draft") {
     return Boolean(result.content?.trim());
@@ -2119,6 +2167,10 @@ function isTaskResultUsable(task, result) {
   if (task.task === "plot-thread-detect") {
     const payload = result;
     return payload.entries.length > 0;
+  }
+  if (task.task === "chapter-scene-plan") {
+    const payload = result;
+    return payload.scenes.length >= 2;
   }
   if (task.task === "outline-batch" || task.task === "outline-chain") {
     const payload = result;
@@ -2168,6 +2220,8 @@ function normalizeTaskResult(task, rawText) {
       return normalizeInspirationPackResult(parsed);
     case "plot-thread-detect":
       return normalizePlotThreadDetectResult(parsed);
+    case "chapter-scene-plan":
+      return normalizeChapterScenePlanResult(parsed);
     case "outline-item":
     default:
       return normalizeOutlineResult(parsed);

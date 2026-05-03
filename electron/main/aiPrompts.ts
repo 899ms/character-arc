@@ -509,7 +509,29 @@ ${String(context.userPrompt ?? '')}
 4. 强贴当前章节标题、章节摘要、分卷目标和大纲，不要跑偏到别的章节。
 5. 字数尽量贴近目标字数，允许上下浮动 10%。
 6. 如果”未收伏笔 / 活跃剧情线”不为空，本章内容不得与这些线索相矛盾；若本章计划收尾某条线，请在正文中给出明确的收束情节。
-7. 优先写出可继续改稿的第一版正文，不要解释。`
+7. 优先写出可继续改稿的第一版正文，不要解释。${
+  context.sceneIndex != null
+    ? `\n\n== 分段生成说明 ==\n本次生成的是第 ${String(context.sceneIndex)} 段（共 ${String(context.totalScenes ?? 1)} 段）。\n本段写作重点：${String(context.sceneFocus ?? '')}\n本段目标字数：${String(context.sceneWordTarget ?? targetWordCount)} 字左右。\n${
+        context.previousDraftText ? `前序已生成内容（末尾节选，仅供衔接参考）：\n...${String(context.previousDraftText)}` : '（本段为第一段，无前序内容）'
+      }\n\n分段硬要求：\n- 只写本段，不要写其他段的内容。\n- 与前序内容无缝衔接，保持人物状态、场景和情绪连贯。\n- 直接开始正文，不要标注”第X段”或任何标记。\n- 不要总结或预告后续内容。`
+    : ''
+}`
+    })
+  }
+
+  // ── 章节场景规划任务（分段初稿前的结构规划，返回 JSON） ──
+  if (task.task === 'chapter-scene-plan') {
+    const sceneCount = (() => {
+      const words = Number(context.targetWordCount ?? 0)
+      if (words <= 0 || words <= 2500) return 2
+      if (words <= 4500) return 3
+      return 4
+    })()
+
+    return wrapPrompt({
+      system:
+        '你是小说章节场景规划助手。请只返回 JSON 对象，不要返回 Markdown 或多余文字。字段必须包含 scenes 数组。',
+      user: `请将以下章节规划为 ${sceneCount} 个连续场景段落，每段用一句话（20-40字）描述写作重点。\n\n章节标题：${String(context.chapterTitle ?? '')}\n章节摘要：${String(context.chapterSummary ?? '')}\n分卷目标：${String(context.chapterVolumeSummary ?? '')}\n目标字数：${String(context.targetWordCount ?? '')} 字（每段约 ${Math.round(Number(context.targetWordCount ?? 0) / sceneCount)} 字）\n\n要求：\n1. 每段 focus 描述本段的核心动作、冲突或转折，不要空泛\n2. 段与段之间要有明确的推进关系（时间/情绪/信息/局势变化）\n3. 返回 ${sceneCount} 条，不多不少\n\n返回格式：{“scenes”:[{“focus”:””}]}`
     })
   }
 

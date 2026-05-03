@@ -151,6 +151,10 @@ const PROMPT_TASK_PROFILES: Record<AiTaskName, PromptTaskProfile> = {
     label: '章节摘要生成',
     defaultCapabilities: ['settings', 'chapters', 'analysis']
   },
+  'chapter-scene-plan': {
+    label: '章节场景规划',
+    defaultCapabilities: ['settings', 'chapters', 'outline']
+  },
   'plot-thread-detect': {
     label: '章节伏笔识别',
     defaultCapabilities: ['settings', 'chapters', 'analysis']

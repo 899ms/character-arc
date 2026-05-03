@@ -239,9 +239,9 @@ watch(searchKeyword, (value) => {
               <span class="sidebar-label">{{ item.label }}</span>
               <span class="sidebar-hint">{{ item.description }}</span>
             </span>
-            <span v-if="shouldRenderSidebarLabels && sidebarBadgeMap[item.id]" class="sidebar-badge">
+<!--            <span v-if="shouldRenderSidebarLabels && sidebarBadgeMap[item.id]" class="sidebar-badge">
               {{ sidebarBadgeMap[item.id] }}
-            </span>
+            </span>-->
           </button>
         </nav>
       </div>

@@ -15,7 +15,8 @@ import {
   Search,
   Settings,
   Users,
-  GitMerge
+  GitMerge,
+  Wrench
 } from 'lucide-vue-next'
 import { NInput } from 'naive-ui'
 import { resolveNovelLengthLabel } from '@/features/wizard/projectGenres'
@@ -29,6 +30,7 @@ import InspirationPanel from '@/components/InspirationPanel.vue'
 import KnowledgeCenterPanel from '@/components/KnowledgeCenterPanel.vue'
 import OutlinePanel from '@/components/OutlinePanel.vue'
 import PlotThreadsPanel from '@/components/PlotThreadsPanel.vue'
+import ProjectSkillsPanel from '@/components/ProjectSkillsPanel.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 import SearchResultsPanel from '@/components/SearchResultsPanel.vue'
 import type { PanelName } from '@/types/app'
@@ -43,6 +45,7 @@ const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWid
 // 各面板独立的搜索关键词缓存，切换面板时保留搜索状态
 const panelSearch = reactive<Record<string, string>>({
   workflow: '',
+  skills: '',
   overview: '',
   knowledge: '',
   world: '',
@@ -61,6 +64,7 @@ const searchKeyword = ref(panelSearch[appStore.activePanel] ?? '')
 // 侧边栏导航项配置列表，定义各模块的 id、标签、描述和图标
 const sidebarItems = [
   { id: 'workflow', label: '小说流程', description: '维护固定流程文件并驱动写作阶段', icon: BookOpenText, color: '#3b82f6' },
+  { id: 'skills', label: 'Skills', description: '管理内置 skills 与项目扩展 skills', icon: Wrench, color: '#f97316' },
   { id: 'overview', label: '作品概览', description: '掌握项目进度与全局信息', icon: LayoutDashboard, color: '#8b5cf6' },
   { id: 'knowledge', label: '知识中心', description: '整理项目事实、拆书摘录与冲突项', icon: BookCopy, color: '#0f766e' },
   { id: 'world', label: '世界观设定', description: '沉淀世界规则、地点与设定条目', icon: Globe2, color: '#06b6d4' },
@@ -304,6 +308,7 @@ watch(searchKeyword, (value) => {
           />
           <!-- 非搜索模式下根据当前激活的面板渲染对应组件 -->
           <NovelWorkflowPanel v-else-if="appStore.activePanel === 'workflow'" key="workflow" />
+          <ProjectSkillsPanel v-else-if="appStore.activePanel === 'skills'" key="skills" />
           <OverviewPanel v-else-if="appStore.activePanel === 'overview'" key="overview" :search-query="normalizedSearch" />
           <KnowledgeCenterPanel v-else-if="appStore.activePanel === 'knowledge'" key="knowledge" />
           <WorldviewPanel v-else-if="appStore.activePanel === 'world'" key="world" :search-query="normalizedSearch" />

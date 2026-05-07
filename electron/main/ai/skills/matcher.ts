@@ -7,7 +7,8 @@ export function pickSkillsFor(
   task: AiTaskPayload,
   enabledOverrides?: Map<string, boolean>
 ): SkillSelection[] {
-  const skills = getEnabledSkills()
+  const projectId = String(task.context.projectId ?? '').trim()
+  const skills = getEnabledSkills(projectId)
   const context = task.context ?? {}
 
   const scored = skills

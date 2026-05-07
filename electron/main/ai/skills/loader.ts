@@ -3,7 +3,6 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AiTaskPayload } from '../shared-types'
 import type { SkillDefinition } from './types'
-import { getProjectSkillsDirPath } from './discovery'
 
 export function loadSkillReferences(
   skill: SkillDefinition,
@@ -17,7 +16,7 @@ export function loadSkillReferences(
   for (const rule of rules) {
     if (!shouldLoadReference(rule.loadWhen, task)) continue
 
-    const filePath = join(getProjectSkillsDirPath(), skill.id, rule.file)
+    const filePath = join(skill.rootDir, rule.file)
     if (!existsSync(filePath)) continue
 
     try {
@@ -48,8 +47,8 @@ function shouldLoadReference(
   return true
 }
 
-export async function loadSkillContentAsync(skillId: string): Promise<string | null> {
-  const filePath = join(getProjectSkillsDirPath(), skillId, 'SKILL.md')
+export async function loadSkillContentAsync(skill: SkillDefinition): Promise<string | null> {
+  const filePath = join(skill.rootDir, 'SKILL.md')
   try {
     return await readFile(filePath, 'utf-8')
   } catch {

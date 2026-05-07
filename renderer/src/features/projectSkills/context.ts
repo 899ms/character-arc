@@ -24,7 +24,7 @@ export async function loadEnabledProjectSkillsContext(
     return []
   }
 
-  const result = await window.characterArc.getProjectSkillsContext()
+  const result = await window.characterArc.getProjectSkillsContext(project.id)
   if (!result.success || !Array.isArray(result.skills)) {
     return []
   }

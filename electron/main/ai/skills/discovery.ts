@@ -1,3 +1,4 @@
+import { app } from 'electron'
 import { readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,12 +7,31 @@ import { parseSkillFrontmatter } from './frontmatter'
 import { validateManifest } from './manifest'
 import { inferSkillMeta, buildFullManifest } from './heuristics'
 
-export function getProjectSkillsDirPath(): string {
-  return join(process.cwd(), '.project-skills')
+function resolveProjectSkillsScope(projectId?: string): string {
+  const normalizedProjectId = String(projectId ?? '').trim()
+  return normalizedProjectId || '_shared'
 }
 
-export async function scanSkillsFromDisk(): Promise<SkillDefinition[]> {
-  const root = getProjectSkillsDirPath()
+export function getBuiltinSkillsDirPath(): string {
+  return join(app.getAppPath(), 'resources', 'skills')
+}
+
+export function getProjectSkillsDirPath(projectId?: string): string {
+  return join(app.getPath('userData'), 'project-skills', resolveProjectSkillsScope(projectId))
+}
+
+export async function scanSkillsFromDisk(projectId?: string): Promise<SkillDefinition[]> {
+  const builtinSkills = await scanSkillsUnderRoot(getBuiltinSkillsDirPath(), 'builtin')
+  const projectSkills = await scanSkillsUnderRoot(getProjectSkillsDirPath(projectId), 'project')
+  const mergedMap = new Map<string, SkillDefinition>()
+
+  for (const skill of builtinSkills) mergedMap.set(skill.id, skill)
+  for (const skill of projectSkills) mergedMap.set(skill.id, skill)
+
+  return Array.from(mergedMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+}
+
+async function scanSkillsUnderRoot(root: string, scope: 'builtin' | 'project'): Promise<SkillDefinition[]> {
   if (!existsSync(root)) return []
 
   const entries = await readdir(root, { withFileTypes: true })
@@ -19,14 +39,14 @@ export async function scanSkillsFromDisk(): Promise<SkillDefinition[]> {
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    const skill = await loadSkillDefinition(root, entry.name)
+    const skill = await loadSkillDefinition(root, entry.name, scope)
     if (skill) skills.push(skill)
   }
 
-  return skills.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  return skills
 }
 
-async function loadSkillDefinition(root: string, dirName: string): Promise<SkillDefinition | null> {
+async function loadSkillDefinition(root: string, dirName: string, scope: 'builtin' | 'project'): Promise<SkillDefinition | null> {
   const skillDir = join(root, dirName)
   const skillPath = join(skillDir, 'SKILL.md')
 
@@ -44,7 +64,9 @@ async function loadSkillDefinition(root: string, dirName: string): Promise<Skill
       id: dirName,
       name: frontmatter.name || dirName,
       version: frontmatter.version || '',
-      path: `.project-skills/${dirName}`,
+      path: `${scope === 'builtin' ? 'skills' : 'project-skills'}/${dirName}`,
+      scope,
+      rootDir: skillDir,
       description: frontmatter.description || '',
       source: frontmatter.source || '',
       manifest: fullManifest,

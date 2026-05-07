@@ -249,18 +249,18 @@ declare global {
         result?: CharacterArcReferenceImportResult
         error?: string
       }>
-      scanProjectSkills: () => Promise<{
+      scanProjectSkills: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>
         error?: string
       }>
-      importProjectSkillsPackage: () => Promise<{
+      importProjectSkillsPackage: (projectId: string) => Promise<{
         success: boolean
         canceled: boolean
         importedSkillIds?: string[]
         error?: string
       }>
-      getProjectSkillsContext: () => Promise<{
+      getProjectSkillsContext: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<{
           id: string

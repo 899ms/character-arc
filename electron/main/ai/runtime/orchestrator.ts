@@ -8,7 +8,7 @@ import type {
 } from '../shared-types'
 import { normalizeSettings, validateSettings, resolveMaxTokens } from '../settings'
 import { getTaskHandler } from '../tasks'
-import { pickSkillsFor } from '../skills'
+import { getAllSkills, pickSkillsFor, refreshRegistry } from '../skills'
 import { requestAiText, requestAiTextStream } from '../transport'
 import type { StructuredOutputOptions } from '../transport'
 import { buildPromptInput } from './context-builder'
@@ -24,9 +24,11 @@ export async function runAiTask(
   const settings = normalizeSettings(task.settings)
   validateSettings(settings)
   const startedAt = new Date().toISOString()
+  const projectId = String(task.context.projectId ?? '').trim()
 
   const handler = getTaskHandler(task.task)
-  const skills = pickSkillsFor(task)
+  await refreshRegistry(projectId || undefined).catch(() => {})
+  const skills = pickSkillsFor(task, resolveEnabledSkillOverrides(task, projectId))
   const usedSkillIds = skills.map((s) => s.id)
 
   const input = buildPromptInput(task, skills, knowledgeContext)
@@ -59,7 +61,7 @@ export async function runAiTask(
       result,
       meta: buildRunMeta(
         task.task,
-        String(task.context.projectId ?? '').trim(),
+        projectId,
         String(task.context.chapterId ?? '').trim() || undefined,
         settings,
         'success',
@@ -78,7 +80,7 @@ export async function runAiTask(
     throw Object.assign(new Error(message), {
       aiRunMeta: buildRunMeta(
         task.task,
-        String(task.context.projectId ?? '').trim(),
+        projectId,
         String(task.context.chapterId ?? '').trim() || undefined,
         settings,
         'error',
@@ -107,9 +109,11 @@ export async function streamAiTask(
   const settings = normalizeSettings(task.settings)
   validateSettings(settings)
   const startedAt = new Date().toISOString()
+  const projectId = String(task.context.projectId ?? '').trim()
 
   const taskHandler = getTaskHandler(task.task)
-  const skills = pickSkillsFor(task)
+  await refreshRegistry(projectId || undefined).catch(() => {})
+  const skills = pickSkillsFor(task, resolveEnabledSkillOverrides(task, projectId))
   const usedSkillIds = skills.map((s) => s.id)
 
   const input = buildPromptInput(task, skills, knowledgeContext)
@@ -128,7 +132,7 @@ export async function streamAiTask(
       result,
       meta: buildRunMeta(
         task.task,
-        String(task.context.projectId ?? '').trim(),
+        projectId,
         String(task.context.chapterId ?? '').trim() || undefined,
         settings,
         status,
@@ -148,7 +152,7 @@ export async function streamAiTask(
     throw Object.assign(new Error(message || 'AI 流式调用失败'), {
       aiRunMeta: buildRunMeta(
         task.task,
-        String(task.context.projectId ?? '').trim(),
+        projectId,
         String(task.context.chapterId ?? '').trim() || undefined,
         settings,
         status,
@@ -184,4 +188,31 @@ function resolveStructuredOptions(settings: AppSettings, outputType: 'json' | 't
   const mode = probeStructuredOutputMode(settings)
   if (mode === 'prompt_only') return undefined
   return { mode }
+}
+
+function resolveEnabledSkillOverrides(
+  task: AiTaskPayload,
+  projectId: string
+): Map<string, boolean> | undefined {
+  if (!Array.isArray(task.context.projectSkills)) {
+    return undefined
+  }
+
+  const enabledIds = new Set(
+    task.context.projectSkills
+      .map((skill) => {
+        if (!skill || typeof skill !== 'object') {
+          return ''
+        }
+        return String((skill as { id?: string }).id ?? '').trim()
+      })
+      .filter(Boolean)
+  )
+
+  const allSkills = getAllSkills(projectId || undefined)
+  if (!allSkills.length) {
+    return undefined
+  }
+
+  return new Map(allSkills.map((skill) => [skill.id, enabledIds.has(skill.id)]))
 }

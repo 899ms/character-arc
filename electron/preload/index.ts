@@ -30,12 +30,12 @@ contextBridge.exposeInMainWorld('characterArc', {
   importJson: () => ipcRenderer.invoke('characterarc:import-json'),
   /** 导入参考小说并执行拆书分析 */
   importReferenceNovelAnalysis: (payload: unknown) => ipcRenderer.invoke('characterarc:import-reference-novel-analysis', toIpcPayload(payload)),
-  /** 扫描当前项目目录下的 .project-skills/ */
-  scanProjectSkills: () => ipcRenderer.invoke('characterarc:project-skills-scan'),
-  /** 从本地目录导入一组项目 skills 到 .project-skills/ */
-  importProjectSkillsPackage: () => ipcRenderer.invoke('characterarc:project-skills-import'),
-  /** 读取当前项目已安装 skills 的正文内容（供 AI 内部使用） */
-  getProjectSkillsContext: () => ipcRenderer.invoke('characterarc:project-skills-context'),
+  /** 加载当前项目可用的 skills（软件内置 + 项目扩展） */
+  scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
+  /** 从本地目录导入一组项目扩展 skills 到应用数据目录 */
+  importProjectSkillsPackage: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-import', projectId),
+  /** 读取当前项目可用 skills 的正文内容（供 AI 内部使用） */
+  getProjectSkillsContext: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-context', projectId),
 
   // ── AI 任务 ──
   /** 发送一次非流式 AI 生成请求，返回完整结果 */

@@ -578,17 +578,27 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  ipcMain.handle('characterarc:project-skills-scan', async () => {
+  ipcMain.handle('characterarc:project-skills-scan', async (_event, projectId: unknown) => {
     try {
-      await refreshSkillRegistry()
-      return { success: true, skills: skillScanEntries() }
+      const resolvedProjectId = String(projectId ?? '').trim()
+      if (!resolvedProjectId) {
+        return { success: true, skills: [] }
+      }
+
+      await refreshSkillRegistry(resolvedProjectId)
+      return { success: true, skills: skillScanEntries(resolvedProjectId) }
     } catch {
       return { success: true, skills: [] }
     }
   })
 
-  ipcMain.handle('characterarc:project-skills-import', async () => {
+  ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown) => {
     try {
+      const resolvedProjectId = String(projectId ?? '').trim()
+      if (!resolvedProjectId) {
+        return { success: false, canceled: false, error: '缺少项目 ID，无法导入项目技能。' }
+      }
+
       const dialogOptions: Electron.OpenDialogOptions = {
         title: '选择要导入的 Skill 包目录',
         properties: ['openDirectory']
@@ -603,7 +613,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       }
 
       const selectedPath = result.filePaths[0]
-      const skillsRoot = getSkillsDirPath()
+      const skillsRoot = getSkillsDirPath(resolvedProjectId)
       await mkdir(skillsRoot, { recursive: true })
 
       const findSkillDirs = async (root: string): Promise<string[]> => {
@@ -629,7 +639,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         importedSkillIds.push(basename(sourceDir))
       }
 
-      await refreshSkillRegistry()
+      await refreshSkillRegistry(resolvedProjectId)
       return {
         success: true,
         canceled: false,
@@ -640,9 +650,15 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  ipcMain.handle('characterarc:project-skills-context', async () => {
+  ipcMain.handle('characterarc:project-skills-context', async (_event, projectId: unknown) => {
     try {
-      return { success: true, skills: skillContextEntries() }
+      const resolvedProjectId = String(projectId ?? '').trim()
+      if (!resolvedProjectId) {
+        return { success: true, skills: [] }
+      }
+
+      await refreshSkillRegistry(resolvedProjectId)
+      return { success: true, skills: skillContextEntries(resolvedProjectId) }
     } catch {
       return { success: true, skills: [] }
     }

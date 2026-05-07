@@ -49,7 +49,7 @@
       "out/**",
       "dist-electron/**",
       "node_modules/@node-rs/**",
-      "resources/icon.png"
+      "resources/**/*"
     ],
     "asarUnpack": [
       "node_modules/@node-rs/**"

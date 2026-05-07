@@ -105,6 +105,7 @@ export function normalizeProjectSkills(skills?: ProjectSkillItem[] | null): Proj
         name: skill.name?.trim() || '未命名 Skill',
         version: skill.version?.trim() || '',
         path: skill.path?.trim() || '',
+        scope: skill.scope === 'builtin' || skill.scope === 'project' ? skill.scope : 'project',
         description: skill.description?.trim() || '',
         category:
           skill.category === 'market'

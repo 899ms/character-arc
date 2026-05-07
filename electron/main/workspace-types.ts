@@ -108,6 +108,7 @@ export type WorkspacePayload = {
       id: string
       name: string
       path: string
+      scope?: 'builtin' | 'project'
       description: string
       enabled: boolean
       stageIds: Array<'reference' | 'premise' | 'setting' | 'outline' | 'draft'>

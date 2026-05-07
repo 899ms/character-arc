@@ -2,7 +2,7 @@
 export type ThemeName = 'ocean' | 'jade' | 'amber' | 'rose'
 
 /** 工作台面板名称 */
-export type PanelName = 'workflow' | 'overview' | 'knowledge' | 'world' | 'characters' | 'relations' | 'inspiration' | 'outline' | 'threads' | 'chapters' | 'settings'
+export type PanelName = 'workflow' | 'skills' | 'overview' | 'knowledge' | 'world' | 'characters' | 'relations' | 'inspiration' | 'outline' | 'threads' | 'chapters' | 'settings'
 
 /** 小说流程阶段标识 */
 export type NovelWorkflowStageId = 'reference' | 'premise' | 'setting' | 'outline' | 'draft'
@@ -155,8 +155,10 @@ export interface ProjectSkillItem {
   name: string
   /** skill 版本号 */
   version?: string
-  /** 相对项目根目录路径 */
+  /** 相对技能存储区路径 */
   path: string
+  /** 来源范围：软件内置 / 项目导入 */
+  scope?: 'builtin' | 'project'
   /** 描述 */
   description: string
   /** 技能分类 */

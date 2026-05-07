@@ -28,6 +28,8 @@ export type SkillDefinition = {
   name: string
   version: string
   path: string
+  scope: 'builtin' | 'project'
+  rootDir: string
   description: string
   source: string
   manifest: SkillManifest
@@ -51,6 +53,7 @@ export type SkillScanEntry = {
   name: string
   version: string
   path: string
+  scope: 'builtin' | 'project'
   description: string
   category: SkillCategory
   compatibility: SkillCompatibility

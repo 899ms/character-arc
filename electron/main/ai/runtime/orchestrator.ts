@@ -14,7 +14,7 @@ import type { StructuredOutputOptions } from '../transport'
 import { buildPromptInput } from './context-builder'
 import { probeStructuredOutputMode } from './capability-probe'
 import { buildRunMeta, buildResponsePreview } from './run-meta'
-import { logPrompt } from './logging'
+import { logPrompt, logResponse, logSelection } from './logging'
 import { buildRepairPrompt } from '../prompts/repair'
 
 export async function runAiTask(
@@ -30,6 +30,7 @@ export async function runAiTask(
   await refreshRegistry(projectId || undefined).catch(() => {})
   const skills = pickSkillsFor(task, resolveEnabledSkillOverrides(task, projectId))
   const usedSkillIds = skills.map((s) => s.id)
+  logSelection(task.task, skills, knowledgeContext?.usedKnowledge ?? [])
 
   const input = buildPromptInput(task, skills, knowledgeContext)
   const prompt = handler.buildPrompt(input)
@@ -40,14 +41,18 @@ export async function runAiTask(
   const structured = resolveStructuredOptions(settings, handler.outputType)
 
   try {
+    const requestStartedAt = Date.now()
     let rawText = await requestAiText(settings, prompt, maxTokens, structured)
+    logResponse('REQUEST', settings, task.task, rawText, Date.now() - requestStartedAt, { usedSkills: usedSkillIds })
     let result = handler.normalize(rawText)
     let repairTriggered = false
 
     if (handler.outputType === 'json' && !handler.validate(result)) {
       const repairPromptPair = buildRepairPrompt(prompt.system, prompt.user, rawText)
       logPrompt('REPAIR', settings, repairPromptPair, task.task, usedSkillIds)
+      const repairStartedAt = Date.now()
       rawText = await requestAiText(settings, repairPromptPair, maxTokens)
+      logResponse('REPAIR', settings, task.task, rawText, Date.now() - repairStartedAt, { usedSkills: usedSkillIds })
       result = handler.normalize(rawText)
       repairTriggered = true
 
@@ -115,6 +120,7 @@ export async function streamAiTask(
   await refreshRegistry(projectId || undefined).catch(() => {})
   const skills = pickSkillsFor(task, resolveEnabledSkillOverrides(task, projectId))
   const usedSkillIds = skills.map((s) => s.id)
+  logSelection(task.task, skills, knowledgeContext?.usedKnowledge ?? [])
 
   const input = buildPromptInput(task, skills, knowledgeContext)
   const prompt = taskHandler.buildPrompt(input)
@@ -123,7 +129,9 @@ export async function streamAiTask(
   logPrompt('STREAM', settings, prompt, task.task, usedSkillIds)
 
   try {
+    const requestStartedAt = Date.now()
     const rawText = await requestAiTextStream(settings, prompt, handlers, signal, maxTokens)
+    logResponse('STREAM', settings, task.task, rawText, Date.now() - requestStartedAt, { usedSkills: usedSkillIds })
     const result = taskHandler.normalize(rawText)
     const finishedAt = new Date().toISOString()
     const status = signal.aborted ? 'canceled' : 'success'

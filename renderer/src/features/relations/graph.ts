@@ -331,7 +331,9 @@ export function buildRelationsCytoscapeElements(graph: FilteredRelationsGraph): 
         size: resolveNodeSize(degreeMap.get(node.id) ?? 0),
         glowSize: resolveNodeGlowSize(degreeMap.get(node.id) ?? 0),
         borderColor: resolveBorderColor(node.accent),
-        textBackground: resolveNodeTextBackground(node.accent)
+        textBackground: resolveNodeTextBackground(node.accent),
+        textBorderColor: resolveNodeTextBorderColor(node.accent),
+        avatarImage: buildNodeAvatarDataUrl(node.label, node.accent)
       },
       classes: [node.kind, graph.matchedNodeIds.has(node.id) ? 'matched' : ''].filter(Boolean).join(' ')
     })),
@@ -393,7 +395,7 @@ function resolveEdgeWidth(edge: RelationsGraphEdge): number {
 }
 
 function resolveNodeSize(degree: number): number {
-  return Math.min(72, 50 + degree * 4)
+  return Math.min(82, 58 + degree * 4.5)
 }
 
 function resolveNodeGlowSize(degree: number): number {
@@ -432,12 +434,91 @@ function resolveBorderColor(accent: string): string {
 
 function resolveNodeTextBackground(accent: string): string {
   if (accent.startsWith('#')) {
-    return `${accent}22`
+    return `${accent}14`
   }
   if (accent.startsWith('rgb')) {
-    return accent.replace('rgb(', 'rgba(').replace(')', ', 0.18)')
+    return accent.replace('rgb(', 'rgba(').replace(')', ', 0.08)')
   }
-  return 'rgba(219, 234, 254, 0.92)'
+  return 'rgba(255, 255, 255, 0.96)'
+}
+
+function resolveNodeTextBorderColor(accent: string): string {
+  if (accent.startsWith('#')) {
+    return `${accent}38`
+  }
+  if (accent.startsWith('rgb')) {
+    return accent.replace('rgb(', 'rgba(').replace(')', ', 0.22)')
+  }
+  return 'rgba(148, 163, 184, 0.42)'
+}
+
+function buildNodeAvatarDataUrl(label: string, accent: string): string {
+  const avatarLabel = resolveAvatarLabel(label)
+  const textColor = resolveReadableTextColor(accent)
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">',
+    '<rect width="100" height="100" rx="50" fill="transparent" />',
+    `<text x="50" y="54" text-anchor="middle" dominant-baseline="middle" fill="${textColor}" font-size="42" font-weight="700" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">${escapeXml(avatarLabel)}</text>`,
+    '</svg>'
+  ].join('')
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+function resolveAvatarLabel(label: string): string {
+  const normalized = label.trim()
+  return Array.from(normalized)[0] ?? '?'
+}
+
+function resolveReadableTextColor(accent: string): string {
+  const rgb = parseColorToRgb(accent)
+  if (!rgb) {
+    return '#ffffff'
+  }
+
+  const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255
+  return luminance > 0.68 ? '#0f172a' : '#ffffff'
+}
+
+function parseColorToRgb(color: string): [number, number, number] | null {
+  const hex = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+  if (hex) {
+    const value = hex[1]
+    if (value.length === 3) {
+      return [
+        Number.parseInt(`${value[0]}${value[0]}`, 16),
+        Number.parseInt(`${value[1]}${value[1]}`, 16),
+        Number.parseInt(`${value[2]}${value[2]}`, 16)
+      ]
+    }
+
+    return [
+      Number.parseInt(value.slice(0, 2), 16),
+      Number.parseInt(value.slice(2, 4), 16),
+      Number.parseInt(value.slice(4, 6), 16)
+    ]
+  }
+
+  const rgb = color.match(/^rgb\(([^)]+)\)$/)
+  if (!rgb) {
+    return null
+  }
+
+  const [red, green, blue] = rgb[1].split(',').slice(0, 3).map((item) => Number.parseInt(item.trim(), 10))
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return null
+  }
+
+  return [red, green, blue]
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
 }
 
 function buildDegreeMap(graph: Pick<RelationsGraphData, 'nodes' | 'edges'>): Map<string, number> {

@@ -469,20 +469,23 @@ function buildStylesheet(): StylesheetJson {
       selector: 'node',
       style: {
         label: 'data(label)',
-        color: dark ? '#f4f4f5' : '#0f172a',
-        'font-size': '13',
+        color: '#0f172a',
+        'font-size': '15',
         'font-weight': '700',
         'text-wrap': 'wrap',
-        'text-max-width': '120',
+        'text-max-width': '180',
         'text-valign': 'bottom',
         'text-halign': 'center',
-        'text-margin-y': '14',
-        'text-background-color': dark ? '#27272a' : 'data(textBackground)',
-        'text-background-opacity': dark ? '0.92' : '0.94',
-        'text-background-padding': '6',
+        'text-margin-y': '20',
+        'text-background-color': '#ffffff',
+        'text-background-opacity': '0.98',
+        'text-background-padding': '8',
         'text-background-shape': 'round-rectangle',
-        'text-border-opacity': '0',
-        'text-outline-width': '0'
+        'text-border-width': '1',
+        'text-border-color': 'rgba(15, 23, 42, 0.12)',
+        'text-border-opacity': '1',
+        'text-outline-width': '0',
+        'text-justification': 'center'
       }
     },
     {
@@ -492,6 +495,15 @@ function buildStylesheet(): StylesheetJson {
         width: 'data(size)',
         height: 'data(size)',
         'background-color': 'data(accent)',
+        'background-image': 'data(avatarImage)',
+        'background-image-opacity': '1',
+        'background-fit': 'cover',
+        'background-clip': 'none',
+        'background-width': '72%',
+        'background-height': '72%',
+        'background-position-x': '50%',
+        'background-position-y': '50%',
+        'background-image-containment': 'over',
         'border-width': '2.5',
         'border-color': 'data(borderColor)',
         'shadow-blur': '22',
@@ -521,6 +533,8 @@ function buildStylesheet(): StylesheetJson {
         'underlay-padding': '14',
         'shadow-blur': '28',
         'shadow-opacity': '0.34',
+        'text-background-color': '#ffffff',
+        'text-border-color': 'rgba(37, 99, 235, 0.24)',
         opacity: '1'
       }
     },
@@ -552,7 +566,7 @@ function buildStylesheet(): StylesheetJson {
     {
       selector: 'node.muted-node',
       style: {
-        opacity: '0.14'
+        opacity: '0.34'
       }
     },
     {

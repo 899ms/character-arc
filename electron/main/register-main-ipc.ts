@@ -55,6 +55,7 @@ type RegisterMainIpcHandlersDeps = {
     title: string,
     localContext: ReferenceNovelLocalContext,
     analysis: ReferenceStyleAnalysisResult,
+    chunkResults: Array<{ label: string; characterCount: number; result: ReferenceStyleChunkResult }>,
     importedAt: string
   ) => unknown[]
   buildImportedReferenceStylePrompt: (title: string, analysis: ReferenceStyleAnalysisResult) => string
@@ -339,7 +340,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
 
       const importedAt = new Date().toISOString()
       const knowledgeDocuments = request.projectId
-        ? deps.buildImportedReferenceKnowledgeDocuments(request.projectId, resolvedTitle, localContext, analysis, importedAt)
+        ? deps.buildImportedReferenceKnowledgeDocuments(request.projectId, resolvedTitle, localContext, analysis, chunkResults, importedAt)
         : []
       deps.emitReferenceImportProgress(window, {
         phase: 'saving',

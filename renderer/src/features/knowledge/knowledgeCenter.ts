@@ -82,6 +82,41 @@ const KNOWLEDGE_SOURCE_TYPE_LABELS: Record<KnowledgeDocumentSourceType, string> 
   'chapter-summary': '章节摘要'
 }
 
+const DISPLAY_KEYWORD_BLACKLIST = new Set([
+  '这个',
+  '那个',
+  '这里',
+  '那里',
+  '他们',
+  '我们',
+  '自己',
+  '时候',
+  '东西',
+  '什么',
+  '怎么',
+  '说道',
+  '问道',
+  '笑道',
+  '看着',
+  '看向',
+  '发现',
+  '觉得',
+  '感觉',
+  '知道',
+  '继续',
+  '直接',
+  '慢慢',
+  '瞬间',
+  '片刻',
+  '目光',
+  '眼神',
+  '脸色',
+  '声音',
+  '问题',
+  '事情',
+  '地方'
+])
+
 function normalizeKnowledgeText(value: string): string {
   return value
     .toLowerCase()
@@ -145,6 +180,22 @@ function normalizeReferenceAssetKey(value: string): string {
   return normalizeKnowledgeText(value)
 }
 
+function sanitizeReferenceKeywords(keywords: string[]): string[] {
+  return Array.from(
+    new Set(
+      keywords
+        .map((keyword) => String(keyword).trim())
+        .filter((keyword) =>
+          keyword.length >= 2
+          && keyword.length <= 10
+          && !DISPLAY_KEYWORD_BLACKLIST.has(keyword)
+          && !/^第?[0-9零一二三四五六七八九十百千万两]+[章节回卷部集]$/u.test(keyword)
+          && /^[\p{Script=Han}A-Za-z0-9·_-]+$/u.test(keyword)
+        )
+    )
+  ).slice(0, 8)
+}
+
 function getReferenceAssetSourceTitle(documentView: KnowledgeDocumentView): string {
   const metadataTitle = String(documentView.document.metadata?.sourceTitle ?? '').trim()
   if (metadataTitle) {
@@ -161,7 +212,14 @@ function getReferenceAssetFileName(documentView: KnowledgeDocumentView): string 
 function getReferenceAssetStyleRules(documentViews: KnowledgeDocumentView[]): string[] {
   const metadataRules = documentViews.flatMap((item) => {
     const rawRules = item.document.metadata?.styleRules
-    return Array.isArray(rawRules) ? rawRules : []
+    const structuralTags = [
+      item.document.metadata?.plotFunction,
+      item.document.metadata?.tensionCurve
+    ]
+    return [
+      ...(Array.isArray(rawRules) ? rawRules : []),
+      ...structuralTags
+    ]
   })
 
   return Array.from(
@@ -202,8 +260,8 @@ function buildReferenceAssetLibrary(
   const latestTimestamp = timestamps.length ? Math.max(...timestamps) : 0
 
   const topKeywords = referenceWork?.analysis?.topKeywords?.length
-    ? referenceWork.analysis.topKeywords
-    : Array.from(new Set(sortedDocumentViews.flatMap((item) => item.document.keywords))).slice(0, 8)
+    ? sanitizeReferenceKeywords(referenceWork.analysis.topKeywords)
+    : sanitizeReferenceKeywords(Array.from(new Set(sortedDocumentViews.flatMap((item) => item.document.keywords))))
 
   const styleRules = referenceWork?.analysis?.styleRules?.length
     ? referenceWork.analysis.styleRules

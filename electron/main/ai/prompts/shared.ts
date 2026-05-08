@@ -1,6 +1,13 @@
 import type { AiTaskKnowledgeContext } from '../shared-types'
 import type { SkillSelection } from '../skills/types'
 
+type ProjectSkillContextEntry = {
+  id: string
+  name: string
+  description: string
+  content: string
+}
+
 export function formatRetrievedKnowledge(knowledge?: AiTaskKnowledgeContext['usedKnowledge']): string {
   if (!knowledge?.length) return ''
 
@@ -69,6 +76,54 @@ export function formatMountedSkills(skills: SkillSelection[]): string {
       ].filter(Boolean).join('\n')
     })
     .join('\n\n')
+}
+
+export function formatProjectSkillsContext(rawSkills: unknown, maxSkills = 8): string {
+  if (!Array.isArray(rawSkills) || rawSkills.length === 0) {
+    return ''
+  }
+
+  const skills = rawSkills
+    .map((skill) => normalizeProjectSkillContextEntry(skill))
+    .filter((skill): skill is ProjectSkillContextEntry => Boolean(skill))
+    .slice(0, maxSkills)
+
+  if (!skills.length) {
+    return ''
+  }
+
+  return skills
+    .map((skill, index) => {
+      const content = skill.content.trim().slice(0, 2200)
+      return [
+        `项目 Skill ${index + 1}：${skill.name}`,
+        skill.description ? `说明：${skill.description}` : '',
+        `内容摘录：\n${content}`
+      ].filter(Boolean).join('\n')
+    })
+    .join('\n\n')
+}
+
+function normalizeProjectSkillContextEntry(value: unknown): ProjectSkillContextEntry | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const source = value as Partial<ProjectSkillContextEntry>
+  const id = String(source.id ?? '').trim()
+  const name = String(source.name ?? '').trim()
+  const content = String(source.content ?? '').trim()
+
+  if (!id || !name || !content) {
+    return null
+  }
+
+  return {
+    id,
+    name,
+    description: String(source.description ?? '').trim(),
+    content
+  }
 }
 
 export function resolveWritingStyleInstruction(context: Record<string, unknown>): string {

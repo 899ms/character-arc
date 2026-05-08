@@ -83,7 +83,7 @@ const librarySummaryCards = computed(() => [
     key: 'chunks',
     label: '分块文档',
     value: referenceAssets.value.reduce((count, asset) => count + asset.chunkCount, 0).toLocaleString(),
-    hint: '原文分块与局部摘录'
+    hint: '局部拆书结论与桥段分析'
   },
   {
     key: 'duplicate',
@@ -464,6 +464,49 @@ function openReferenceAsset(asset: ReferenceAssetLibrary): void {
   }
 }
 
+function removeReferenceAsset(asset: ReferenceAssetLibrary): void {
+  const project = currentProject.value
+  if (!project) {
+    return
+  }
+
+  dialog.warning({
+    title: '删除参考资产',
+    content: `确认删除《${asset.title}》的拆书资产吗？这会一并删除关联的知识文档和参考作品档案，无法撤销。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      appStore.removeKnowledgeDocuments(project.id, asset.relatedDocumentIds)
+      appStore.updateProject(project.id, {
+        referenceWorks: (project.referenceWorks ?? []).filter((work) => work.id !== asset.id && work.title !== asset.title)
+      })
+      if (selectedDocument.value && asset.relatedDocumentIds.includes(selectedDocument.value.document.id)) {
+        selectedDocument.value = null
+      }
+      message.success(`已删除《${asset.title}》的拆书资产`)
+    }
+  })
+}
+
+function removeKnowledgeDocument(documentView: KnowledgeDocumentView): void {
+  const project = currentProject.value
+  if (!project) {
+    return
+  }
+
+  dialog.warning({
+    title: '删除知识文档',
+    content: `确认删除「${documentView.document.title}」吗？此操作无法撤销。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      appStore.removeKnowledgeDocuments(project.id, [documentView.document.id])
+      selectedDocument.value = null
+      message.success(`已删除「${documentView.document.title}」`)
+    }
+  })
+}
+
 const deepAnalyzingAssetId = ref<string | null>(null)
 
 const SOURCE_TEXT_CHAR_CAP = 30_000
@@ -474,7 +517,7 @@ function buildDeepAnalyzeSourceText(asset: ReferenceAssetLibrary): string {
     .map((doc) => ({
       label: String(doc.metadata?.chunkLabel ?? doc.title).trim() || doc.title,
       order: Number(doc.metadata?.chunkOrder ?? Number.MAX_SAFE_INTEGER),
-      text: doc.content
+      text: String(doc.metadata?.rawText ?? doc.content ?? '')
     }))
     .sort((a, b) => a.order - b.order)
 
@@ -612,9 +655,6 @@ const progressCurrentStep = computed(() => {
         <n-button secondary :disabled="isReferenceOperationActive" @click="importReferenceNovelAnalysis">
           {{ isImportingReferenceNovel ? '拆书中...' : '导入小说并拆书' }}
         </n-button>
-        <n-button type="primary" :disabled="isReferenceOperationActive" @click="generateReferenceInsights">
-          {{ isGeneratingReferenceInsights ? '提炼中...' : 'AI提炼参考结论' }}
-        </n-button>
       </div>
     </div>
 
@@ -691,6 +731,7 @@ const progressCurrentStep = computed(() => {
             <template #icon><Sparkles :size="14" /></template>
             AI 深度拆书
           </n-button>
+          <n-button tertiary type="error" size="small" @click="removeReferenceAsset(asset)">删除</n-button>
         </div>
 
         <n-collapse class="asset-docs-collapse">
@@ -718,11 +759,19 @@ const progressCurrentStep = computed(() => {
 
 
     <!-- Progress Modal -->
-    <n-modal v-model:show="progressModalVisible">
-      <n-card style="width: min(520px, 92vw)" :bordered="false" title="拆书处理中" role="dialog" aria-modal="true">
+    <n-modal v-model:show="progressModalVisible" :mask-closable="false">
+      <n-card style="width: min(520px, 92vw)" :bordered="false" title="拆书处理中" role="dialog" aria-modal="true" closable @close="progressModalVisible = false">
         <div class="progress-body">
           <div class="progress-top">
-            <strong>{{ referenceImportProgress?.sourceTitle ? `正在处理《${referenceImportProgress.sourceTitle}》` : '等待开始' }}</strong>
+            <strong>
+              {{
+                (referenceImportProgress?.percent ?? 0) >= 100
+                    ? `《${referenceImportProgress?.sourceTitle || ''}》处理完毕`
+                    : referenceImportProgress?.sourceTitle
+                        ? `正在处理《${referenceImportProgress.sourceTitle}》`
+                        : '等待开始'
+              }}
+            </strong>
             <n-tag size="small" type="primary" :bordered="false">{{ referenceImportProgress?.percent ?? 0 }}%</n-tag>
           </div>
           <n-progress type="line" :percentage="referenceImportProgress?.percent ?? 0" :show-indicator="false" />
@@ -744,7 +793,10 @@ const progressCurrentStep = computed(() => {
           </div>
         </template>
         <template #header-extra>
-          <n-tag v-if="selectedDocument" type="info" :bordered="false">{{ selectedDocument.sourceTypeLabel }}</n-tag>
+          <div v-if="selectedDocument" class="detail-header-actions">
+            <n-tag type="info" :bordered="false">{{ selectedDocument.sourceTypeLabel }}</n-tag>
+            <n-button tertiary type="error" size="small" @click="removeKnowledgeDocument(selectedDocument)">删除文档</n-button>
+          </div>
         </template>
 
         <div v-if="selectedDocument" class="detail-body">
@@ -1028,6 +1080,12 @@ const progressCurrentStep = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-keywords {

@@ -215,6 +215,10 @@ export type ReferenceStyleChunkResult = {
   pacingControl: string
   emotionExpression: string
   plotFunction: string
+  hookDesign: string
+  informationRelease: string
+  characterShift: string
+  tensionCurve: string
   styleRules: string[]
 }
 

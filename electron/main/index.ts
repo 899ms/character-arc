@@ -79,6 +79,7 @@ function buildImportedReferenceKnowledgeDocuments(
   title: string,
   localContext: ReferenceNovelLocalContext,
   analysis: ReferenceStyleAnalysisResult,
+  chunkResults: Array<{ label: string; characterCount: number; result: ReferenceStyleChunkResult }>,
   importedAt: string
 ): WorkspaceKnowledgeDocument[] {
   const summaryDocument: WorkspaceKnowledgeDocument = {
@@ -119,28 +120,65 @@ function buildImportedReferenceKnowledgeDocuments(
     updatedAt: importedAt
   }
 
-  const chunkDocuments = localContext.analysisChunks.map((chunk) => ({
-    id: `knowledge-reference-chunk-${randomUUID()}`,
-    projectId,
-    title: `${title}｜${chunk.label}`,
-    sourceType: 'reference-chunk' as const,
-    sourceLabel: `${localContext.fileName} / ${chunk.label}`,
-    content: chunk.text,
-    summary: `${chunk.label}，约 ${chunk.characterCount} 字；关键词：${chunk.topKeywords.join('、') || '待补充'}`,
-    keywords: chunk.topKeywords,
-    metadata: {
-      sourceTitle: title,
-      fileName: localContext.fileName,
-      fileType: localContext.fileType,
-      chunkId: chunk.id,
-      chunkLabel: chunk.label,
-      chunkOrder: chunk.order,
-      characterCount: chunk.characterCount,
-      metrics: chunk.metrics
-    },
-    createdAt: importedAt,
-    updatedAt: importedAt
-  }))
+  const chunkDocuments = localContext.analysisChunks.map((chunk, index) => {
+    const chunkAnalysis = chunkResults[index]?.result
+    const content = [
+      `分块：${chunk.label}`,
+      `局部概括：${chunkAnalysis?.overview || '待补充'}`,
+      `桥段功能：${chunkAnalysis?.plotFunction || '待补充'}`,
+      `钩子设计：${chunkAnalysis?.hookDesign || '待补充'}`,
+      `信息释放：${chunkAnalysis?.informationRelease || '待补充'}`,
+      `人物位移：${chunkAnalysis?.characterShift || '待补充'}`,
+      `张力走势：${chunkAnalysis?.tensionCurve || '待补充'}`,
+      `句式特征：${chunkAnalysis?.sentenceStyle || '待补充'}`,
+      `对白职责：${chunkAnalysis?.dialogueRatio || '待补充'}`,
+      `节奏控制：${chunkAnalysis?.pacingControl || '待补充'}`,
+      `情绪表达：${chunkAnalysis?.emotionExpression || '待补充'}`,
+      chunkAnalysis?.styleRules?.length ? `局部可复用规则：${chunkAnalysis.styleRules.join('；')}` : '',
+      chunk.topKeywords.length ? `关键词：${chunk.topKeywords.join('、')}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    return {
+      id: `knowledge-reference-chunk-${randomUUID()}`,
+      projectId,
+      title: `${title}｜${chunk.label}`,
+      sourceType: 'reference-chunk' as const,
+      sourceLabel: `${localContext.fileName} / ${chunk.label}`,
+      content,
+      summary: `${chunk.label}｜${chunkAnalysis?.plotFunction || '局部风格分块'}｜${chunkAnalysis?.overview || '待补充拆书结论'}`,
+      keywords: Array.from(new Set([
+        ...chunk.topKeywords,
+        chunkAnalysis?.plotFunction || '',
+        ...(chunkAnalysis?.styleRules ?? [])
+      ].filter(Boolean))).slice(0, 20),
+      metadata: {
+        sourceTitle: title,
+        fileName: localContext.fileName,
+        fileType: localContext.fileType,
+        chunkId: chunk.id,
+        chunkLabel: chunk.label,
+        chunkOrder: chunk.order,
+        characterCount: chunk.characterCount,
+        metrics: chunk.metrics,
+        rawText: chunk.text,
+        plotFunction: chunkAnalysis?.plotFunction || '',
+        hookDesign: chunkAnalysis?.hookDesign || '',
+        informationRelease: chunkAnalysis?.informationRelease || '',
+        characterShift: chunkAnalysis?.characterShift || '',
+        tensionCurve: chunkAnalysis?.tensionCurve || '',
+        overview: chunkAnalysis?.overview || '',
+        sentenceStyle: chunkAnalysis?.sentenceStyle || '',
+        dialogueRatio: chunkAnalysis?.dialogueRatio || '',
+        pacingControl: chunkAnalysis?.pacingControl || '',
+        emotionExpression: chunkAnalysis?.emotionExpression || '',
+        styleRules: chunkAnalysis?.styleRules ?? []
+      },
+      createdAt: importedAt,
+      updatedAt: importedAt
+    }
+  })
 
   return [summaryDocument, ...chunkDocuments]
 }
@@ -200,6 +238,10 @@ function formatReferenceChunkSummaries(
       `节奏：${result.pacingControl}`,
       `情绪：${result.emotionExpression}`,
       `桥段功能：${result.plotFunction}`,
+      `钩子设计：${result.hookDesign}`,
+      `信息释放：${result.informationRelease}`,
+      `人物位移：${result.characterShift}`,
+      `张力走势：${result.tensionCurve}`,
       `局部规则：${result.styleRules.join('；')}`
     ].join('\n'))
     .join('\n\n')

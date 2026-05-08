@@ -33,7 +33,7 @@ function buildDeepAnalyzeSourceText(referenceTitle: string): string {
     .map((doc) => ({
       label: String(doc.metadata?.chunkLabel ?? doc.title).trim() || doc.title,
       order: Number(doc.metadata?.chunkOrder ?? Number.MAX_SAFE_INTEGER),
-      text: doc.content
+      text: String(doc.metadata?.rawText ?? doc.content ?? '')
     }))
     .sort((a, b) => a.order - b.order)
 

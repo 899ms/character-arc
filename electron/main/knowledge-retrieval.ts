@@ -87,7 +87,7 @@ function buildKnowledgeSnippet(document: WorkspaceKnowledgeDocument): string {
     const text = (document.content || document.summary || '').trim()
     return text.length > 2400 ? `${text.slice(0, 2400)}…` : text
   }
-  // 拆书分块：content 是参考小说原文（用作 in-context 仿写范本）。
+  // 拆书分块：content 是结构化局部拆书结果，优先把桥段功能和局部规则送进 prompt。
   if (sourceType === 'reference-chunk') {
     const text = (document.content || document.summary || '').trim()
     return text.length > 1400 ? `${text.slice(0, 1400)}…` : text

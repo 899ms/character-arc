@@ -12,15 +12,17 @@ const currentProjectTitle = computed(() => appStore.currentProject?.title?.trim(
 function backToProjectCenter(): void {
   appStore.backToProjects()
 }
-
-function backToWorkbench(): void {
-  appStore.setPanel('workflow')
-}
 </script>
 
 <template>
   <section class="deconstruction-page">
     <header class="deconstruction-header arc-drag-region">
+      <div class="deconstruction-header-actions arc-no-drag">
+        <n-button quaternary @click="backToProjectCenter">
+          <template #icon><ChevronLeft :size="16" /></template>
+          返回项目中心
+        </n-button>
+      </div>
       <div class="deconstruction-header-copy">
         <div class="deconstruction-header-kicker">
           <LibraryBig :size="14" />
@@ -30,15 +32,7 @@ function backToWorkbench(): void {
         <p>{{ currentProjectTitle }}</p>
       </div>
 
-      <div class="deconstruction-header-actions arc-no-drag">
-        <n-button secondary @click="backToWorkbench">
-          <template #icon><ChevronLeft :size="16" /></template>
-          返回项目工作台
-        </n-button>
-        <n-button quaternary @click="backToProjectCenter">
-          项目中心
-        </n-button>
-      </div>
+
     </header>
 
     <main class="deconstruction-main">

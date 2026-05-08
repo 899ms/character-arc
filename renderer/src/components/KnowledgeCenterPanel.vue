@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { AlertCircle, BookCopy, LibraryBig, Search, Sparkles } from 'lucide-vue-next'
+import { Search, Sparkles } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
   NCard,
+  NCollapse,
+  NCollapseItem,
+  NDescriptions,
+  NDescriptionsItem,
   NEmpty,
   NInput,
   NList,
   NListItem,
   NModal,
+  NProgress,
   NScrollbar,
+  NStatistic,
+  NStep,
+  NSteps,
   NTag,
   useDialog,
   useMessage
@@ -18,7 +26,6 @@ import {
 import {
   buildKnowledgeCenterState,
   buildReferenceAssetLibraries,
-  resolveKnowledgeSourceTypeLabel,
   type KnowledgeDocumentView,
   type ReferenceAssetLibrary
 } from '@/features/knowledge/knowledgeCenter'
@@ -55,17 +62,9 @@ const detailVisible = computed({
 
 const healthTone = computed(() => (referenceAssets.value.length > 0 ? 'stable' : 'attention'))
 
-const heroSummary = computed(() =>
-  referenceAssets.value.length > 0
-    ? '所有拆书内容都按参考作品归档展示。你可以直接进入单篇资产查看总纲、分块原文和深度拆书结果。'
-    : '先导入一部参考小说。系统会自动按作品建立资产分组，把总纲、分块和方法论结果归到一起。'
-)
-
 const isReferenceOperationActive = computed(() =>
   isImportingReferenceNovel.value || isGeneratingReferenceInsights.value || Boolean(activeReferenceSkillActionKey.value)
 )
-
-const latestReferenceAsset = computed(() => referenceAssets.value[0] ?? null)
 
 const librarySummaryCards = computed(() => [
   {
@@ -111,25 +110,6 @@ onBeforeUnmount(() => {
 function setReferenceProgress(payload: CharacterArcReferenceImportProgressPayload | null): void {
   referenceImportProgress.value = payload
   progressModalVisible.value = Boolean(payload)
-}
-
-function resolveReferenceImportPhaseLabel(phase?: CharacterArcReferenceImportProgressPayload['phase']): string {
-  switch (phase) {
-    case 'extracting':
-      return '读取正文'
-    case 'chunking':
-      return '切分分块'
-    case 'chunk-analysis':
-      return '逐块分析'
-    case 'aggregating':
-      return '汇总结论'
-    case 'saving':
-      return '回填知识库'
-    case 'done':
-      return '已完成'
-    default:
-      return '等待开始'
-  }
 }
 
 function resolveReferenceSkillActionLabel(actionKey: 'long-scan' | 'short-scan' | 'long-analyze' | 'short-analyze'): string {
@@ -608,316 +588,209 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
       return right.document.updatedAt.localeCompare(left.document.updatedAt)
     })
 }
+
+const progressStepPhases = ['extracting', 'chunk-analysis', 'aggregating', 'saving'] as const
+const progressStepLabels = ['读取/切分', '逐块分析', '汇总结论', '归档资产']
+
+const progressCurrentStep = computed(() => {
+  const phase = referenceImportProgress.value?.phase
+  if (!phase) return 0
+  const index = progressStepPhases.indexOf(phase as typeof progressStepPhases[number])
+  if (phase === 'chunking') return 1
+  if (phase === 'done') return 5
+  return index >= 0 ? index + 1 : 0
+})
 </script>
 
 <template>
   <section class="knowledge-screen">
-    <div class="knowledge-screen-topbar">
-      <div class="knowledge-panel-title">
+    <!-- Header -->
+    <div class="knowledge-header">
+      <div class="knowledge-header-left">
         <strong>拆书知识库</strong>
-        <span>把参考作品、拆书总纲、分块原文和派生结论收束到一个工作面板里</span>
-      </div>
-      <div class="knowledge-screen-actions">
-        <n-tag :type="healthTone === 'stable' ? 'success' : 'warning'" round :bordered="false">
+        <n-tag :type="healthTone === 'stable' ? 'success' : 'warning'" size="small" round :bordered="false">
           {{ healthTone === 'stable' ? '已归档' : '等待第一部参考作品' }}
         </n-tag>
       </div>
+      <div class="knowledge-header-actions">
+        <n-button secondary :disabled="isReferenceOperationActive" @click="importReferenceNovelAnalysis">
+          {{ isImportingReferenceNovel ? '拆书中...' : '导入小说并拆书' }}
+        </n-button>
+        <n-button type="primary" :disabled="isReferenceOperationActive" @click="generateReferenceInsights">
+          {{ isGeneratingReferenceInsights ? '提炼中...' : 'AI提炼参考结论' }}
+        </n-button>
+      </div>
     </div>
 
-    <div class="knowledge-center">
-      <section class="deconstruction-command-deck">
-        <div class="deconstruction-command-copy">
-          <div class="deconstruction-command-badge">
-            <LibraryBig :size="15" />
-            <span>Reference Archive</span>
-          </div>
-          <h2>先归档参考作品，再在同一处做拆书、复盘和复用。</h2>
-          <p>
-            这里不再只是被动展示知识文档。它负责承接参考作品导入、拆书进度、资产归档、深度拆书和参考阶段方法论沉淀。
-          </p>
-        </div>
-        <div class="deconstruction-command-actions">
-          <div class="deconstruction-command-topline">
-            <span>{{ resolveReferenceImportPhaseLabel(referenceImportProgress?.phase) }}</span>
-            <small>{{ latestReferenceAsset ? `最近归档：${latestReferenceAsset.title}` : '还没有归档参考作品' }}</small>
-          </div>
-          <div class="deconstruction-command-buttons">
-            <n-button round strong secondary :disabled="isReferenceOperationActive" @click="importReferenceNovelAnalysis">
-              {{ isImportingReferenceNovel ? '拆书中...' : '导入小说并拆书' }}
-            </n-button>
-            <n-button type="primary" round strong :disabled="isReferenceOperationActive" @click="generateReferenceInsights">
-              {{ isGeneratingReferenceInsights ? '提炼中...' : 'AI提炼参考结论' }}
-            </n-button>
-          </div>
-        </div>
-      </section>
-
-      <section class="knowledge-stats-grid">
-        <article v-for="card in librarySummaryCards" :key="card.key" class="knowledge-stat-card">
-          <span class="knowledge-stat-label">{{ card.label }}</span>
-          <strong>{{ card.value }}</strong>
-          <p>{{ card.hint }}</p>
-        </article>
-      </section>
-
-      <section class="knowledge-hero">
-        <div class="knowledge-hero-copy">
-          <div class="knowledge-hero-badge">
-            <BookCopy :size="15" />
-            <span>Deconstruction Map</span>
-          </div>
-          <h2>以拆书资产为中心，往外连接项目记忆和冲突治理。</h2>
-          <p>{{ heroSummary }}</p>
-        </div>
-        <div class="knowledge-hero-side">
-          <div class="knowledge-hero-chip">
-            <component :is="healthTone === 'stable' ? Sparkles : AlertCircle" :size="15" />
-            <span>{{ healthTone === 'stable' ? '可以继续扩写' : '建议先清理底座' }}</span>
-          </div>
-          <strong>{{ allState.stats.totalDocuments }}</strong>
-          <span>条知识文档</span>
-        </div>
-      </section>
-
-      <section class="knowledge-toolbar">
-        <n-input
-          v-model:value="keyword"
-          clearable
-          class="knowledge-toolbar-search"
-          placeholder="搜索参考作品、总纲、分块或风格规则"
-        >
-          <template #prefix>
-            <Search :size="14" />
-          </template>
-        </n-input>
-
-        <n-tag round :bordered="false" type="info">
-          当前显示 {{ groupedAssets.length }} / {{ referenceAssets.length }} 部参考作品
-        </n-tag>
-      </section>
-
-      <section class="knowledge-section">
-        <div class="knowledge-section-head">
-          <div>
-            <h3>拆书资产库</h3>
-            <p>每个参考作品都会被组织成一份资产档案，绑定总纲、分块、风格规则和深度拆书入口。</p>
-          </div>
-          <n-tag type="info" :bordered="false">
-            {{ referenceAssets.length }} 项
-          </n-tag>
-        </div>
-
-        <n-empty
-          v-if="!groupedAssets.length"
-          description="当前还没有沉淀参考资产，先在这里导入参考小说并拆书。"
-        />
-
-        <div v-else class="knowledge-asset-stack">
-          <n-card
-            v-for="asset in groupedAssets"
-            :key="asset.id"
-            size="small"
-            :bordered="false"
-            class="knowledge-asset-card knowledge-asset-card--grouped"
-          >
-            <template #header>
-              <div class="knowledge-group-headline">
-                <strong>{{ asset.title }}</strong>
-                <span>{{ asset.source }}<template v-if="asset.fileName"> · {{ asset.fileName }}</template></span>
-              </div>
-            </template>
-
-            <template #header-extra>
-              <div class="knowledge-asset-badge">
-                <LibraryBig :size="14" />
-                <span>{{ asset.documentCount }} 篇文档</span>
-              </div>
-            </template>
-
-            <p class="knowledge-asset-summary">{{ asset.summary }}</p>
-
-            <div class="knowledge-asset-metrics">
-              <span>总纲 {{ asset.summaryCount }}</span>
-              <span>分块 {{ asset.chunkCount }}</span>
-              <span v-if="asset.chapterCount > 0">估算 {{ asset.chapterCount }} 章/段</span>
-              <span v-if="asset.characterCount > 0">约 {{ asset.characterCount.toLocaleString() }} 字</span>
-              <span>更新于 {{ asset.updatedAtLabel }}</span>
-            </div>
-
-            <div v-if="asset.styleRules.length" class="knowledge-document-keywords">
-              <span v-for="rule in asset.styleRules.slice(0, 4)" :key="`${asset.id}-${rule}`">{{ rule }}</span>
-            </div>
-
-            <div v-else-if="asset.topKeywords.length" class="knowledge-document-keywords">
-              <span v-for="tag in asset.topKeywords.slice(0, 6)" :key="`${asset.id}-${tag}`">{{ tag }}</span>
-            </div>
-
-            <div class="knowledge-asset-actions">
-              <n-button tertiary type="primary" size="small" @click="openReferenceAsset(asset)">
-                查看主文档
-              </n-button>
-              <n-button
-                type="primary"
-                size="small"
-                :loading="deepAnalyzingAssetId === asset.id"
-                :disabled="Boolean(deepAnalyzingAssetId) && deepAnalyzingAssetId !== asset.id"
-                @click="handleAiDeepAnalyze(asset)"
-              >
-                <template #icon>
-                  <Sparkles :size="14" />
-                </template>
-                AI 深度拆书
-              </n-button>
-            </div>
-
-            <div class="knowledge-article-docs">
-              <div class="knowledge-article-docs-head">
-                <strong>文章分组文档</strong>
-                <span>{{ resolveAssetDocuments(asset).length }} 篇</span>
-              </div>
-              <n-list hoverable clickable>
-                <n-list-item
-                  v-for="item in resolveAssetDocuments(asset)"
-                  :key="item.document.id"
-                  class="knowledge-article-doc-item"
-                  @click="openDocument(item)"
-                >
-                  <div class="knowledge-article-doc-copy">
-                    <div class="knowledge-article-doc-top">
-                      <strong>{{ item.document.title }}</strong>
-                      <n-tag size="small" :bordered="false" type="info">{{ item.sourceTypeLabel }}</n-tag>
-                    </div>
-                    <p>{{ item.preview || '暂无摘要，点击查看正文。' }}</p>
-                    <span>{{ item.updatedAtLabel }}</span>
-                  </div>
-                </n-list-item>
-              </n-list>
-            </div>
-          </n-card>
-        </div>
-      </section>
-
-      <section class="knowledge-section">
-        <div class="knowledge-section-head">
-          <div>
-            <h3>拆书方法论工具台</h3>
-            <p>把扫榜和拆文整理能力沉淀成可复用知识，而不是留在流程页里一次性消费。</p>
-          </div>
-          <n-tag type="default" :bordered="false">
-            4 个动作
-          </n-tag>
-        </div>
-
-        <div class="reference-skill-grid">
-          <article class="reference-skill-card">
-            <strong>长篇扫榜</strong>
-            <p>适合起点、番茄、晋江等长篇项目，提炼题材风口、读者偏好和开篇卖点。</p>
-            <n-button size="small" secondary :disabled="isReferenceOperationActive" @click="runReferenceSkillAction('long-scan')">
-              {{ activeReferenceSkillActionKey === 'long-scan' ? '执行中...' : '运行长篇扫榜' }}
-            </n-button>
-          </article>
-          <article class="reference-skill-card">
-            <strong>短篇扫榜</strong>
-            <p>适合盐言、番茄短篇等赛道，聚焦情绪方向、反转模式和短开头钩子。</p>
-            <n-button size="small" secondary :disabled="isReferenceOperationActive" @click="runReferenceSkillAction('short-scan')">
-              {{ activeReferenceSkillActionKey === 'short-scan' ? '执行中...' : '运行短篇扫榜' }}
-            </n-button>
-          </article>
-          <article class="reference-skill-card">
-            <strong>长篇拆文整理</strong>
-            <p>基于已拆过的参考作品，整理黄金三章、节奏、人设骨架和爽点组织方式。</p>
-            <n-button size="small" secondary :disabled="isReferenceOperationActive" @click="runReferenceSkillAction('long-analyze')">
-              {{ activeReferenceSkillActionKey === 'long-analyze' ? '执行中...' : '整理长篇拆文' }}
-            </n-button>
-          </article>
-          <article class="reference-skill-card">
-            <strong>短篇拆文整理</strong>
-            <p>基于已拆过的参考作品，提炼情绪曲线、反转布置、钩子设计和收束方式。</p>
-            <n-button size="small" secondary :disabled="isReferenceOperationActive" @click="runReferenceSkillAction('short-analyze')">
-              {{ activeReferenceSkillActionKey === 'short-analyze' ? '执行中...' : '整理短篇拆文' }}
-            </n-button>
-          </article>
-        </div>
-      </section>
-
-    </div>
-
-    <n-modal v-model:show="progressModalVisible">
-      <n-card
-        class="knowledge-progress-modal"
-        :bordered="false"
-        title="拆书处理中"
-        role="dialog"
-        aria-modal="true"
-      >
-        <div class="deconstruction-progress-card" :class="{ active: Boolean(referenceImportProgress) }">
-          <div class="reference-progress-meta">
-            <div>
-              <span class="reference-progress-label">当前任务</span>
-              <strong>{{ referenceImportProgress?.sourceTitle ? `正在处理《${referenceImportProgress.sourceTitle}》` : '等待开始归档参考作品' }}</strong>
-            </div>
-            <span>{{ referenceImportProgress?.percent ?? 0 }}%</span>
-          </div>
-          <div class="reference-progress-track">
-            <div class="reference-progress-fill" :style="{ width: `${referenceImportProgress?.percent ?? 0}%` }" />
-          </div>
-          <p>{{ referenceImportProgress?.message || '导入后会依次完成：读取正文、切分分块、逐块分析、汇总结论、归档到拆书知识库。' }}</p>
-          <small v-if="referenceImportProgress && referenceImportProgress.total > 1">
-            当前进度：{{ referenceImportProgress.current }} / {{ referenceImportProgress.total }}
-          </small>
-          <div class="reference-progress-steps">
-            <span :class="{ active: ['extracting', 'chunking', 'chunk-analysis', 'aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">读取/切分</span>
-            <span :class="{ active: ['chunk-analysis', 'aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">逐块分析</span>
-            <span :class="{ active: ['aggregating', 'saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">汇总结论</span>
-            <span :class="{ active: ['saving', 'done'].includes(referenceImportProgress?.phase ?? '') }">归档资产</span>
-          </div>
-        </div>
+    <!-- Stats -->
+    <div class="knowledge-stats-row">
+      <n-card v-for="card in librarySummaryCards" :key="card.key" size="small">
+        <n-statistic :label="card.label" :value="card.value" />
       </n-card>
-    </n-modal>
+    </div>
 
-    <n-modal v-model:show="detailVisible">
-      <n-card
-        class="knowledge-detail-modal"
-        :bordered="false"
-        title="知识详情"
-        role="dialog"
-        aria-modal="true"
+    <!-- Search -->
+    <div class="knowledge-toolbar">
+      <n-input
+        v-model:value="keyword"
+        clearable
+        class="knowledge-toolbar-search"
+        placeholder="搜索参考作品、总纲、分块或风格规则"
       >
+        <template #prefix>
+          <Search :size="14" />
+        </template>
+      </n-input>
+      <n-tag size="small" round :bordered="false" type="info">
+        {{ groupedAssets.length }} / {{ referenceAssets.length }} 部
+      </n-tag>
+    </div>
+
+    <!-- Asset Library -->
+    <n-empty v-if="!groupedAssets.length" description="还没有沉淀参考资产，先导入参考小说并拆书。" />
+
+    <div v-else class="knowledge-asset-stack">
+      <n-card v-for="asset in groupedAssets" :key="asset.id" size="small">
         <template #header>
-          <div class="knowledge-detail-title">
-            <strong>{{ selectedDocument?.document.title ?? '知识详情' }}</strong>
-            <span>{{ selectedDocument?.sourceLabelText ?? '' }}</span>
+          <div class="asset-header">
+            <strong>{{ asset.title }}</strong>
+            <span>{{ asset.source }}<template v-if="asset.fileName"> &middot; {{ asset.fileName }}</template></span>
           </div>
         </template>
 
         <template #header-extra>
-          <n-tag v-if="selectedDocument" type="info" :bordered="false">
-            {{ selectedDocument.sourceTypeLabel }}
-          </n-tag>
+          <n-tag size="small" :bordered="false" type="info">{{ asset.documentCount }} 篇</n-tag>
         </template>
 
-        <div v-if="selectedDocument" class="knowledge-detail">
-          <div class="knowledge-detail-meta">
-            <span>{{ selectedDocument.sourceScopeLabel }}</span>
-            <span>{{ selectedDocument.updatedAtLabel }}</span>
-            <span>{{ selectedDocument.document.keywords.length }} 个关键词</span>
-          </div>
+        <p class="asset-summary">{{ asset.summary }}</p>
 
-          <n-alert
-            v-if="selectedDocument.document.summary"
-            type="info"
-            :show-icon="false"
-            class="knowledge-inline-alert"
+        <div class="asset-metrics">
+          <n-tag v-if="asset.summaryCount" size="tiny" :bordered="false">总纲 {{ asset.summaryCount }}</n-tag>
+          <n-tag v-if="asset.chunkCount" size="tiny" :bordered="false">分块 {{ asset.chunkCount }}</n-tag>
+          <n-tag v-if="asset.chapterCount > 0" size="tiny" :bordered="false">{{ asset.chapterCount }} 章</n-tag>
+          <n-tag v-if="asset.characterCount > 0" size="tiny" :bordered="false">{{ asset.characterCount.toLocaleString() }} 字</n-tag>
+          <span class="asset-date">{{ asset.updatedAtLabel }}</span>
+        </div>
+
+        <div v-if="asset.styleRules.length" class="asset-tags">
+          <n-tag v-for="rule in asset.styleRules.slice(0, 4)" :key="`${asset.id}-${rule}`" size="small" round type="primary" :bordered="false">
+            {{ rule }}
+          </n-tag>
+        </div>
+        <div v-else-if="asset.topKeywords.length" class="asset-tags">
+          <n-tag v-for="tag in asset.topKeywords.slice(0, 6)" :key="`${asset.id}-${tag}`" size="small" round type="primary" :bordered="false">
+            {{ tag }}
+          </n-tag>
+        </div>
+
+        <div class="asset-actions">
+          <n-button tertiary type="primary" size="small" @click="openReferenceAsset(asset)">查看主文档</n-button>
+          <n-button
+            type="primary"
+            size="small"
+            :loading="deepAnalyzingAssetId === asset.id"
+            :disabled="Boolean(deepAnalyzingAssetId) && deepAnalyzingAssetId !== asset.id"
+            @click="handleAiDeepAnalyze(asset)"
           >
+            <template #icon><Sparkles :size="14" /></template>
+            AI 深度拆书
+          </n-button>
+        </div>
+
+        <n-collapse class="asset-docs-collapse">
+          <n-collapse-item :title="`文档列表 (${resolveAssetDocuments(asset).length} 篇)`" name="docs">
+            <n-list hoverable clickable size="small">
+              <n-list-item
+                v-for="item in resolveAssetDocuments(asset)"
+                :key="item.document.id"
+                @click="openDocument(item)"
+              >
+                <div class="doc-item">
+                  <div class="doc-item-top">
+                    <strong>{{ item.document.title }}</strong>
+                    <n-tag size="tiny" :bordered="false" type="info">{{ item.sourceTypeLabel }}</n-tag>
+                  </div>
+                  <p>{{ item.preview || '暂无摘要' }}</p>
+                  <span>{{ item.updatedAtLabel }}</span>
+                </div>
+              </n-list-item>
+            </n-list>
+          </n-collapse-item>
+        </n-collapse>
+      </n-card>
+    </div>
+
+    <!-- Skill Playbook -->
+    <div class="knowledge-section-head">
+      <strong>拆书方法论工具台</strong>
+      <n-tag size="small" :bordered="false">4 个动作</n-tag>
+    </div>
+    <div class="skill-grid">
+      <n-card v-for="action in [
+        { key: 'long-scan' as const, title: '长篇扫榜', desc: '提炼题材风口、读者偏好和开篇卖点。' },
+        { key: 'short-scan' as const, title: '短篇扫榜', desc: '聚焦情绪方向、反转模式和短开头钩子。' },
+        { key: 'long-analyze' as const, title: '长篇拆文整理', desc: '整理黄金三章、节奏、人设骨架和爽点组织。' },
+        { key: 'short-analyze' as const, title: '短篇拆文整理', desc: '提炼情绪曲线、反转布置、钩子设计和收束。' }
+      ]" :key="action.key" size="small">
+        <template #header><span>{{ action.title }}</span></template>
+        <template #header-extra>
+          <n-button size="tiny" secondary :disabled="isReferenceOperationActive" @click="runReferenceSkillAction(action.key)">
+            {{ activeReferenceSkillActionKey === action.key ? '执行中...' : '运行' }}
+          </n-button>
+        </template>
+        <p class="skill-desc">{{ action.desc }}</p>
+      </n-card>
+    </div>
+
+    <!-- Progress Modal -->
+    <n-modal v-model:show="progressModalVisible">
+      <n-card style="width: min(520px, 92vw)" :bordered="false" title="拆书处理中" role="dialog" aria-modal="true">
+        <div class="progress-body">
+          <div class="progress-top">
+            <strong>{{ referenceImportProgress?.sourceTitle ? `正在处理《${referenceImportProgress.sourceTitle}》` : '等待开始' }}</strong>
+            <n-tag size="small" type="primary" :bordered="false">{{ referenceImportProgress?.percent ?? 0 }}%</n-tag>
+          </div>
+          <n-progress type="line" :percentage="referenceImportProgress?.percent ?? 0" :show-indicator="false" />
+          <p class="progress-message">{{ referenceImportProgress?.message || '导入后会依次完成：读取正文、切分分块、逐块分析、汇总结论、归档到知识库。' }}</p>
+          <n-steps :current="progressCurrentStep" size="small">
+            <n-step v-for="(label, index) in progressStepLabels" :key="index" :title="label" />
+          </n-steps>
+        </div>
+      </n-card>
+    </n-modal>
+
+    <!-- Detail Modal -->
+    <n-modal v-model:show="detailVisible">
+      <n-card style="width: min(920px, 92vw)" :bordered="false" role="dialog" aria-modal="true">
+        <template #header>
+          <div class="detail-header">
+            <strong>{{ selectedDocument?.document.title ?? '知识详情' }}</strong>
+            <span>{{ selectedDocument?.sourceLabelText ?? '' }}</span>
+          </div>
+        </template>
+        <template #header-extra>
+          <n-tag v-if="selectedDocument" type="info" :bordered="false">{{ selectedDocument.sourceTypeLabel }}</n-tag>
+        </template>
+
+        <div v-if="selectedDocument" class="detail-body">
+          <n-descriptions :column="3" label-placement="left" size="small" bordered>
+            <n-descriptions-item label="范围">{{ selectedDocument.sourceScopeLabel }}</n-descriptions-item>
+            <n-descriptions-item label="更新时间">{{ selectedDocument.updatedAtLabel }}</n-descriptions-item>
+            <n-descriptions-item label="关键词数">{{ selectedDocument.document.keywords.length }} 个</n-descriptions-item>
+          </n-descriptions>
+
+          <n-alert v-if="selectedDocument.document.summary" type="info" :show-icon="false">
             {{ selectedDocument.document.summary }}
           </n-alert>
 
-          <div v-if="selectedDocument.document.keywords.length" class="knowledge-detail-keywords">
-            <span v-for="keyword in selectedDocument.document.keywords" :key="keyword">{{ keyword }}</span>
+          <div v-if="selectedDocument.document.keywords.length" class="detail-keywords">
+            <n-tag v-for="kw in selectedDocument.document.keywords" :key="kw" size="small" round type="primary" :bordered="false">
+              {{ kw }}
+            </n-tag>
           </div>
 
-          <n-scrollbar class="knowledge-detail-scroll">
-            <pre class="knowledge-detail-content">{{ selectedDocument.document.content || '暂无正文内容。' }}</pre>
+          <n-scrollbar style="max-height: 56vh">
+            <pre class="detail-content">{{ selectedDocument.document.content || '暂无正文内容。' }}</pre>
           </n-scrollbar>
         </div>
       </n-card>
@@ -930,531 +803,228 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.knowledge-screen-topbar {
+.knowledge-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.knowledge-panel-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.knowledge-panel-title strong {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.knowledge-panel-title span {
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-}
-
-.knowledge-screen-actions {
+.knowledge-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.knowledge-center {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.deconstruction-command-deck {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
-  gap: 18px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--arc-primary) 16%, transparent) 0%, transparent 42%),
-    linear-gradient(135deg, color-mix(in srgb, var(--arc-bg-surface) 92%, white) 0%, var(--arc-bg-surface) 100%);
-  padding: 24px 26px;
-}
-
-.deconstruction-command-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.deconstruction-command-badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 8px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.92);
-  color: rgba(241, 245, 249, 0.98);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 7px 12px;
-  text-transform: uppercase;
-}
-
-.deconstruction-command-copy h2 {
-  margin: 0;
-  color: var(--arc-text-primary);
-  font-size: 30px;
-  line-height: 1.12;
-  letter-spacing: -0.05em;
-}
-
-.deconstruction-command-copy p {
-  margin: 0;
-  max-width: 46rem;
-  color: var(--arc-text-secondary);
-  font-size: 14px;
-  line-height: 1.78;
-}
-
-.deconstruction-command-actions {
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 18px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 12%, var(--arc-border));
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
-  padding: 18px;
-}
-
-.deconstruction-command-topline {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.deconstruction-command-topline span {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-mix));
-  color: var(--arc-primary);
-  font-size: 11px;
-  font-weight: 800;
-  padding: 6px 10px;
-}
-
-.deconstruction-command-topline small {
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.deconstruction-command-buttons {
-  display: flex;
-  flex-wrap: wrap;
   gap: 10px;
 }
 
-.deconstruction-progress-card {
-  border: 1px solid var(--arc-border);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 92%, white);
-  padding: 18px 20px;
-}
-
-.deconstruction-progress-card.active {
-  border-color: color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
-  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
-}
-
-.knowledge-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.8fr);
-  gap: 20px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--arc-primary) 20%, transparent) 0%, transparent 38%),
-    linear-gradient(135deg, color-mix(in srgb, var(--arc-bg-surface) 88%, white) 0%, var(--arc-bg-surface) 100%);
-  padding: 26px 28px;
-}
-
-.knowledge-hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.knowledge-hero-badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--arc-primary) 10%, transparent);
-  color: var(--arc-primary);
-  padding: 6px 12px;
-  font-size: 12px;
+.knowledge-header-left strong {
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.knowledge-hero-copy h2 {
-  margin: 0;
   color: var(--arc-text-primary);
-  font-size: 26px;
-  line-height: 1.2;
 }
 
-.knowledge-hero-copy p {
-  margin: 0;
-  max-width: 720px;
-  color: var(--arc-text-secondary);
-  line-height: 1.7;
-}
-
-.knowledge-hero-side {
+.knowledge-header-actions {
   display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: space-between;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
-  padding: 18px 20px;
-}
-
-.knowledge-hero-chip {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
   gap: 8px;
-  color: var(--arc-text-secondary);
-  font-size: 12px;
+  flex-wrap: wrap;
 }
 
-.knowledge-hero-side strong {
-  color: var(--arc-text-primary);
-  font-size: 42px;
-  line-height: 1;
-}
-
-.knowledge-hero-side span:last-child {
-  color: var(--arc-text-secondary);
-  font-size: 13px;
-}
-
-.knowledge-stats-grid {
+.knowledge-stats-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.knowledge-stat-card {
-  border: 1px solid var(--arc-border);
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 90%, white);
-  padding: 18px 20px;
-}
-
-.knowledge-stat-label {
-  display: block;
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.knowledge-stat-card strong {
-  display: block;
-  margin-top: 10px;
-  color: var(--arc-text-primary);
-  font-size: 28px;
-  line-height: 1.1;
-}
-
-.knowledge-stat-card p {
-  margin: 10px 0 0;
-  color: var(--arc-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
 }
 
 .knowledge-toolbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .knowledge-toolbar-search {
-  min-width: min(100%, 320px);
+  min-width: min(100%, 280px);
   flex: 1;
-}
-
-.knowledge-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.knowledge-section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.knowledge-section-head h3 {
-  margin: 0;
-  color: var(--arc-text-primary);
-  font-size: 18px;
-}
-
-.knowledge-section-head p {
-  margin: 6px 0 0;
-  color: var(--arc-text-secondary);
-  line-height: 1.6;
-}
-
-.knowledge-asset-card {
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 92%, white);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-.knowledge-asset-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-}
-
-.knowledge-group-headline {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.knowledge-group-headline strong {
-  color: var(--arc-text-primary);
-}
-
-.knowledge-group-headline span {
-  color: var(--arc-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.knowledge-asset-summary {
-  margin: 0;
-  color: var(--arc-text-secondary);
-  line-height: 1.7;
-}
-
-.knowledge-document-tags,
-.knowledge-document-keywords,
-.knowledge-detail-keywords {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.knowledge-document-keywords span,
-.knowledge-detail-keywords span {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--arc-primary) 10%, transparent);
-  color: var(--arc-primary);
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.knowledge-asset-badge,
-.knowledge-asset-actions,
-.knowledge-asset-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.knowledge-asset-badge {
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-}
-
-.knowledge-asset-metrics {
-  margin: 14px 0;
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-}
-
-.knowledge-asset-actions {
-  margin-top: 16px;
 }
 
 .knowledge-asset-stack {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.knowledge-asset-card--grouped {
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 12%, var(--arc-border));
-}
-
-.knowledge-article-docs {
-  margin-top: 18px;
-  border-top: 1px solid color-mix(in srgb, var(--arc-border) 82%, transparent);
-  padding-top: 16px;
-}
-
-.knowledge-article-docs-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
 }
 
-.knowledge-article-docs-head strong {
+.asset-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.asset-header strong {
   color: var(--arc-text-primary);
-  font-size: 14px;
 }
 
-.knowledge-article-docs-head span {
+.asset-header span {
   color: var(--arc-text-secondary);
   font-size: 12px;
 }
 
-.knowledge-article-doc-item :deep(.n-list-item__main) {
-  width: 100%;
-}
-
-.knowledge-article-doc-copy {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.knowledge-article-doc-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.knowledge-article-doc-top strong {
-  color: var(--arc-text-primary);
-  font-size: 14px;
-}
-
-.knowledge-article-doc-copy p {
-  margin: 0;
+.asset-summary {
+  margin: 0 0 8px;
   color: var(--arc-text-secondary);
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
-.knowledge-article-doc-copy span {
+.asset-metrics {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.asset-date {
   color: var(--arc-text-hint);
   font-size: 12px;
 }
 
-.reference-skill-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.asset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-.reference-skill-card {
-  border: 1px solid var(--arc-border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 94%, white);
-  padding: 16px;
+.asset-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-.reference-skill-card strong {
-  display: block;
+.asset-docs-collapse {
+  border-top: 1px solid var(--arc-border);
+  padding-top: 6px;
+}
+
+.doc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.doc-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.doc-item-top strong {
   color: var(--arc-text-primary);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.reference-skill-card p {
-  margin: 8px 0 12px;
+.doc-item p {
+  margin: 0;
   color: var(--arc-text-secondary);
   font-size: 12px;
-  line-height: 1.72;
+  line-height: 1.6;
 }
 
-.knowledge-progress-modal {
-  width: min(560px, 92vw);
-  border-radius: 24px;
+.doc-item span {
+  color: var(--arc-text-hint);
+  font-size: 11px;
 }
 
-.deconstruction-progress-card {
-  border: 1px solid var(--arc-border);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 92%, white);
-  padding: 18px 20px;
+.knowledge-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.deconstruction-progress-card.active {
-  border-color: color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
-  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+.knowledge-section-head strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
 }
 
-.knowledge-detail-modal {
-  width: min(960px, 92vw);
-  border-radius: 24px;
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.knowledge-detail-title {
+.skill-desc {
+  margin: 0;
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.progress-top strong {
+  font-size: 14px;
+  color: var(--arc-text-primary);
+}
+
+.progress-message {
+  margin: 0;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.detail-header {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.knowledge-detail-title strong {
+.detail-header strong {
   color: var(--arc-text-primary);
-  font-size: 18px;
+  font-size: 16px;
 }
 
-.knowledge-detail-title span,
-.knowledge-detail-meta {
+.detail-header span {
   color: var(--arc-text-secondary);
   font-size: 13px;
 }
 
-.knowledge-detail {
+.detail-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-.knowledge-detail-meta {
+.detail-keywords {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 6px;
 }
 
-.knowledge-detail-scroll {
-  max-height: 56vh;
-  border: 1px solid var(--arc-border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 94%, black 2%);
-  padding: 18px;
-}
-
-.knowledge-detail-content {
+.detail-content {
   margin: 0;
+  padding: 14px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-lg);
+  background: var(--arc-bg-weak);
   color: var(--arc-text-primary);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 13px;
@@ -1463,39 +1033,12 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
   word-break: break-word;
 }
 
-@media (max-width: 1200px) {
-  .knowledge-stats-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 960px) {
-  .deconstruction-command-deck,
-  .knowledge-hero {
-    grid-template-columns: 1fr;
-  }
-
-  .knowledge-stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .reference-skill-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 640px) {
-  .knowledge-hero,
-  .knowledge-stat-card {
-    padding: 18px;
-  }
-
-  .knowledge-stats-grid {
+  .skill-grid {
     grid-template-columns: 1fr;
   }
 
-  .knowledge-article-doc-top,
-  .knowledge-section-head {
+  .doc-item-top {
     flex-direction: column;
     align-items: flex-start;
   }

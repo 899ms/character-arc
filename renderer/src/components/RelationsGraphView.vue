@@ -16,6 +16,7 @@ import {
   type RelationsGraphFocusMode,
   type RelationsGraphNode
 } from '@/features/relations/graph'
+import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{
   graph: RelationsGraphData
@@ -26,6 +27,9 @@ const emit = defineEmits<{
   revealInList: [label: string]
   openNode: [payload: { kind: RelationsGraphNode['kind']; entityId: string }]
 }>()
+
+const appStore = useAppStore()
+const isDarkMode = computed(() => appStore.appSettings.darkMode)
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const highIntensityOnly = ref(false)
@@ -213,6 +217,12 @@ watch(
   },
   { deep: true }
 )
+
+watch(isDarkMode, () => {
+  if (cy) {
+    cy.style(buildStylesheet())
+  }
+})
 
 onMounted(async () => {
   await nextTick()
@@ -444,11 +454,12 @@ function resolveLayout(): cytoscape.LayoutOptions {
 }
 
 function buildStylesheet(): StylesheetJson {
+  const dark = isDarkMode.value
   const stylesheet = [
     {
       selector: 'core',
       style: {
-        'active-bg-color': '#dbeafe',
+        'active-bg-color': dark ? '#1e3a5f' : '#dbeafe',
         'active-bg-opacity': '0.24',
         'active-bg-size': '20',
         'selection-box-opacity': '0'
@@ -458,7 +469,7 @@ function buildStylesheet(): StylesheetJson {
       selector: 'node',
       style: {
         label: 'data(label)',
-        color: '#0f172a',
+        color: dark ? '#f4f4f5' : '#0f172a',
         'font-size': '13',
         'font-weight': '700',
         'text-wrap': 'wrap',
@@ -466,8 +477,8 @@ function buildStylesheet(): StylesheetJson {
         'text-valign': 'bottom',
         'text-halign': 'center',
         'text-margin-y': '14',
-        'text-background-color': 'data(textBackground)',
-        'text-background-opacity': '0.94',
+        'text-background-color': dark ? '#27272a' : 'data(textBackground)',
+        'text-background-opacity': dark ? '0.92' : '0.94',
         'text-background-padding': '6',
         'text-background-shape': 'round-rectangle',
         'text-border-opacity': '0',

@@ -215,7 +215,9 @@ function handleMenuSelect(action: string | number, character: CharacterCard): vo
     <div class="character-grid">
       <!-- Direct card click keeps high-frequency editing faster than routing every change through the overflow menu. -->
       <article v-for="character in filteredCharacters" :key="character.id" class="character-card" @click="openEditor(character)">
-        <div class="avatar" :style="{ background: character.avatar }"></div>
+        <div class="avatar" :style="{ background: character.avatar }">
+          <span>{{ character.name.slice(0, 1) }}</span>
+        </div>
         <div class="character-info">
           <div class="character-head">
             <h3>{{ character.name }}<span v-if="character.role"> ({{ character.role }})</span></h3>
@@ -425,10 +427,21 @@ function handleMenuSelect(action: string | number, character: CharacterCard): vo
 }
 
 .avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 64px;
   height: 64px;
   flex-shrink: 0;
   border-radius: 999px;
+}
+
+.avatar span {
+  color: white;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .character-head {

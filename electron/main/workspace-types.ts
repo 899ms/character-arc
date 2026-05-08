@@ -240,6 +240,17 @@ export type WorkspacePayload = {
         content: string
         updatedAt: string
       }>
+      plotThreads: Array<{
+        id: string
+        title: string
+        description: string
+        openedInChapterId: string
+        status: 'open' | 'resolved'
+        closedInChapterId: string
+        tags: string[]
+        createdAt: string
+        updatedAt: string
+      }>
     }
   >
   appSettings: {
@@ -496,7 +507,8 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
         messages: project.id === selectedProjectId ? legacyPayload.messages ?? [] : [],
         knowledgeDocuments: [],
         aiRuns: [],
-        workflowDocuments: []
+        workflowDocuments: [],
+        plotThreads: []
       }
     ])
   )

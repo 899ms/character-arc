@@ -245,6 +245,20 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       FOREIGN KEY (volume_id) REFERENCES outline_volumes (id) ON DELETE CASCADE
     ) STRICT;
 
+    CREATE TABLE IF NOT EXISTS plot_threads (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      opened_in_chapter_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      closed_in_chapter_id TEXT NOT NULL DEFAULT '',
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+    ) STRICT;
+
     CREATE TABLE IF NOT EXISTS app_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       theme TEXT NOT NULL,
@@ -648,6 +662,26 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     }
   >
 
+  const plotThreads = db.prepare(`
+    SELECT project_id AS projectId, id, title, description,
+      opened_in_chapter_id AS openedInChapterId, status,
+      closed_in_chapter_id AS closedInChapterId,
+      tags_json AS tagsJson, created_at AS createdAt, updated_at AS updatedAt
+    FROM plot_threads
+    ORDER BY project_id ASC, created_at ASC
+  `).all() as Array<{
+    projectId: string
+    id: string
+    title: string
+    description: string
+    openedInChapterId: string
+    status: 'open' | 'resolved'
+    closedInChapterId: string
+    tagsJson: string
+    createdAt: string
+    updatedAt: string
+  }>
+
   const settings = db.prepare(`
     SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, auto_save_interval AS autoSaveInterval
     , model, ui_scale AS uiScale, dark_mode AS darkMode
@@ -722,7 +756,13 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         aiRuns: aiRuns
           .filter((run) => run.projectId === project.id)
           .map(({ projectId: _projectId, ...run }) => run),
-        workflowDocuments: []
+        workflowDocuments: [],
+        plotThreads: plotThreads
+          .filter((thread) => thread.projectId === project.id)
+          .map(({ projectId: _projectId, tagsJson, ...thread }) => ({
+            ...thread,
+            tags: parseJson(tagsJson, [] as string[])
+          }))
       }
     ])
   ) as WorkspacePayload['workspaces']
@@ -765,6 +805,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       DELETE FROM knowledge_documents;
       DELETE FROM ai_runs;
       DELETE FROM workflow_documents;
+      DELETE FROM plot_threads;
       DELETE FROM app_settings;
     `)
 
@@ -860,6 +901,11 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
+    const insertPlotThread = db.prepare(`
+      INSERT INTO plot_threads (id, project_id, title, description, opened_in_chapter_id, status, closed_in_chapter_id, tags_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
     for (const project of payload.projects) {
       const workspace = payload.workspaces[project.id] ?? {
         worldviewEntries: [],
@@ -875,7 +921,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
         messages: [],
         knowledgeDocuments: [],
         aiRuns: [],
-        workflowDocuments: []
+        workflowDocuments: [],
+        plotThreads: []
       }
 
       workspace.worldviewEntries.forEach((entry, index) => {
@@ -1079,6 +1126,21 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
           )
         }
       )
+
+      ;(workspace.plotThreads ?? []).forEach((thread) => {
+        insertPlotThread.run(
+          thread.id,
+          project.id,
+          thread.title,
+          thread.description,
+          thread.openedInChapterId ?? '',
+          thread.status ?? 'open',
+          thread.closedInChapterId ?? '',
+          JSON.stringify(thread.tags ?? []),
+          thread.createdAt,
+          thread.updatedAt
+        )
+      })
     }
 
     const normalizedAppSettings = normalizeAppSettings(payload.appSettings)

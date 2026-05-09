@@ -8,37 +8,41 @@ export async function consumeSseResponse(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
-    let separatorIndex = buffer.indexOf('\n\n')
-    while (separatorIndex >= 0) {
-      const rawEvent = buffer.slice(0, separatorIndex).trim()
-      buffer = buffer.slice(separatorIndex + 2)
-      if (rawEvent) {
-        let eventName = 'message'
-        const dataLines: string[] = []
-        for (const line of rawEvent.split(/\r?\n/)) {
-          if (line.startsWith('event:')) { eventName = line.slice(6).trim() || eventName; continue }
-          if (line.startsWith('data:')) { dataLines.push(line.slice(5).trimStart()) }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+      let separatorIndex = buffer.indexOf('\n\n')
+      while (separatorIndex >= 0) {
+        const rawEvent = buffer.slice(0, separatorIndex).trim()
+        buffer = buffer.slice(separatorIndex + 2)
+        if (rawEvent) {
+          let eventName = 'message'
+          const dataLines: string[] = []
+          for (const line of rawEvent.split(/\r?\n/)) {
+            if (line.startsWith('event:')) { eventName = line.slice(6).trim() || eventName; continue }
+            if (line.startsWith('data:')) { dataLines.push(line.slice(5).trimStart()) }
+          }
+          await onEvent(eventName, dataLines.join('\n'))
         }
-        await onEvent(eventName, dataLines.join('\n'))
+        separatorIndex = buffer.indexOf('\n\n')
       }
-      separatorIndex = buffer.indexOf('\n\n')
-    }
-    if (done) {
-      const trailingEvent = buffer.trim()
-      if (trailingEvent) {
-        let eventName = 'message'
-        const dataLines: string[] = []
-        for (const line of trailingEvent.split(/\r?\n/)) {
-          if (line.startsWith('event:')) { eventName = line.slice(6).trim() || eventName; continue }
-          if (line.startsWith('data:')) { dataLines.push(line.slice(5).trimStart()) }
+      if (done) {
+        const trailingEvent = buffer.trim()
+        if (trailingEvent) {
+          let eventName = 'message'
+          const dataLines: string[] = []
+          for (const line of trailingEvent.split(/\r?\n/)) {
+            if (line.startsWith('event:')) { eventName = line.slice(6).trim() || eventName; continue }
+            if (line.startsWith('data:')) { dataLines.push(line.slice(5).trimStart()) }
+          }
+          await onEvent(eventName, dataLines.join('\n'))
         }
-        await onEvent(eventName, dataLines.join('\n'))
+        break
       }
-      break
     }
+  } finally {
+    reader.cancel().catch(() => {})
   }
 }
 

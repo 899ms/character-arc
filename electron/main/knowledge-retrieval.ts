@@ -124,22 +124,25 @@ export function retrieveKnowledgeContext(
 
   const ranked = documents
     .map((document) => {
-      const title = String(document.title ?? '')
-      const summary = String(document.summary ?? '')
-      const content = String(document.content ?? '')
-      const sourceLabel = String(document.sourceLabel ?? '')
+      const title = String(document.title ?? '').toLowerCase()
+      const summary = String(document.summary ?? '').toLowerCase()
+      const sourceLabel = String(document.sourceLabel ?? '').toLowerCase()
       const keywords = Array.isArray(document.keywords) ? document.keywords.map((k) => String(k).trim()).filter(Boolean) : []
       const lowerKeywords = keywords.map((k) => k.toLowerCase())
-      const haystack = `${title}\n${summary}\n${content}\n${sourceLabel}`.toLowerCase()
+      const keywordSet = new Set(lowerKeywords)
+
+      const contentText = String(document.content ?? '').toLowerCase()
+      const wordSet = new Set(tokenizeKnowledgeText(`${title} ${summary} ${contentText} ${sourceLabel}`))
+
       let score = resolveKnowledgeSourceBaseScore(document.sourceType)
 
       for (const token of queryTokens) {
-        if (lowerKeywords.some((k) => k === token)) score += 4
+        if (keywordSet.has(token)) score += 4
         else if (lowerKeywords.some((k) => k.includes(token) || token.includes(k))) score += 2.5
-        if (title.toLowerCase().includes(token)) score += 2
-        if (sourceLabel.toLowerCase().includes(token)) score += 1.5
-        if (summary.toLowerCase().includes(token)) score += 1.2
-        if (haystack.includes(token)) score += 0.6
+        if (title.includes(token)) score += 2
+        if (sourceLabel.includes(token)) score += 1.5
+        if (summary.includes(token)) score += 1.2
+        if (wordSet.has(token)) score += 0.6
       }
 
       return { score, document, keywords, projectSource: isProjectKnowledgeSource(document.sourceType) }

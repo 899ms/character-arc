@@ -2562,13 +2562,15 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  const MAX_CHAT_MESSAGES = 100
+
   // ── AI 聊天消息 ──
   /** 添加用户消息到聊天记录 */
   function pushUserMessage(content: string): void {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       messages: [
-        ...workspace.messages,
+        ...workspace.messages.slice(-MAX_CHAT_MESSAGES + 1),
         {
           id: uniqueId('msg'),
           role: 'user',
@@ -2583,7 +2585,7 @@ export const useAppStore = defineStore('app', () => {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       messages: [
-        ...workspace.messages,
+        ...workspace.messages.slice(-MAX_CHAT_MESSAGES + 1),
         {
           id: uniqueId('msg'),
           role: 'assistant',

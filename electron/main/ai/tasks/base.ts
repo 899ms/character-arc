@@ -31,6 +31,10 @@ function sanitizeJsonText(text: string): string {
 function tryParseJsonRecord(text: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      const first = parsed.find((item) => item && typeof item === 'object' && !Array.isArray(item))
+      return (first as Record<string, unknown>) ?? null
+    }
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
   } catch {
     return null
@@ -116,9 +120,15 @@ function salvageTruncatedJsonObject(text: string): Record<string, unknown> | nul
 export function extractJsonObject(text: string): Record<string, unknown> {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
   const raw = fenced?.[1] ?? text
+
   const firstBrace = raw.indexOf('{')
-  const lastBrace = raw.lastIndexOf('}')
-  const jsonSlice = firstBrace >= 0 && lastBrace >= 0 ? raw.slice(firstBrace, lastBrace + 1) : raw
+  const firstBracket = raw.indexOf('[')
+  const jsonStart = firstBrace >= 0 && (firstBracket < 0 || firstBrace < firstBracket)
+    ? firstBrace
+    : firstBracket
+  const closingChar = jsonStart >= 0 && raw[jsonStart] === '[' ? ']' : '}'
+  const lastClose = raw.lastIndexOf(closingChar)
+  const jsonSlice = jsonStart >= 0 && lastClose >= jsonStart ? raw.slice(jsonStart, lastClose + 1) : raw
 
   const direct = tryParseJsonRecord(jsonSlice)
   if (direct) {

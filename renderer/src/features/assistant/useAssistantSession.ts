@@ -376,11 +376,12 @@ export function useAssistantSession(messagesViewport?: Ref<HTMLElement | null>) 
       return
     }
 
-    await appendConversationMessage('user', `【${quickAction}】${content}`)
-    draft.value = ''
     isResponding.value = true
     isStopping.value = false
     streamingReply.value = ''
+
+    await appendConversationMessage('user', `【${quickAction}】${content}`)
+    draft.value = ''
     await scrollToBottom(true)
 
     try {
@@ -478,11 +479,12 @@ export function useAssistantSession(messagesViewport?: Ref<HTMLElement | null>) 
       return
     }
 
-    await appendConversationMessage('user', `【${action.label}】${content}`)
-    draft.value = ''
     isResponding.value = true
     isStopping.value = false
     streamingReply.value = ''
+
+    await appendConversationMessage('user', `【${action.label}】${content}`)
+    draft.value = ''
     await scrollToBottom(true)
 
     try {
@@ -570,6 +572,10 @@ export function useAssistantSession(messagesViewport?: Ref<HTMLElement | null>) 
     const content = (promptText ?? draft.value).trim()
     if (!content || isResponding.value) return
 
+    isResponding.value = true
+    isStopping.value = false
+    streamingReply.value = ''
+
     const userMessage = quickAction ? `【${quickAction}】${content}` : content
     const projectSkills = await loadEnabledProjectSkillsContext(currentProject.value, 'draft')
     const assistantContext = buildChapterAssistantContext({
@@ -601,9 +607,6 @@ export function useAssistantSession(messagesViewport?: Ref<HTMLElement | null>) 
 
     await appendConversationMessage('user', userMessage)
     draft.value = ''
-    isResponding.value = true
-    isStopping.value = false
-    streamingReply.value = ''
     await scrollToBottom(true)
 
     try {

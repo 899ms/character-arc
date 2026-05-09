@@ -47,38 +47,51 @@ export async function requestAnthropicStream(
   signal: AbortSignal,
   maxTokens?: number
 ): Promise<string> {
-  const response = await fetch(
-    `${settings.baseUrl.replace(/\/$/, '')}/v1/messages`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': settings.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      signal,
-      body: JSON.stringify({
-        model: settings.model,
-        stream: true,
-        max_tokens: maxTokens ?? 600,
-        system: prompt.system,
-        messages: [{ role: 'user', content: prompt.user }]
-      })
+  const timeoutCtl = new AbortController()
+  const timeoutId = setTimeout(() => timeoutCtl.abort(), 180_000)
+  const combinedSignal = AbortSignal.any([signal, timeoutCtl.signal])
+
+  try {
+    const response = await fetch(
+      `${settings.baseUrl.replace(/\/$/, '')}/v1/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': settings.apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        signal: combinedSignal,
+        body: JSON.stringify({
+          model: settings.model,
+          stream: true,
+          max_tokens: maxTokens ?? 600,
+          system: prompt.system,
+          messages: [{ role: 'user', content: prompt.user }]
+        })
+      }
+    )
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, 'Anthropic'))
     }
-  )
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, 'Anthropic'))
+    let content = ''
+    await consumeSseResponse(response, (eventName, data) => {
+      if (!data) return
+      let payload: Record<string, unknown>
+      try {
+        payload = JSON.parse(data) as Record<string, unknown>
+      } catch {
+        return
+      }
+      const delta = extractAnthropicDelta(eventName, payload)
+      if (!delta) return
+      content += delta
+      handlers.onTextDelta(delta)
+    })
+    return content
+  } finally {
+    clearTimeout(timeoutId)
   }
-  let content = ''
-  await consumeSseResponse(response, (eventName, data) => {
-    if (!data) return
-    const payload = JSON.parse(data) as Record<string, unknown>
-    const delta = extractAnthropicDelta(eventName, payload)
-    if (!delta) return
-    content += delta
-    handlers.onTextDelta(delta)
-  })
-  return content
 }
 
 // ---------------------------------------------------------------------------

@@ -294,6 +294,12 @@ declare global {
         result?: CharacterArcReferenceImportResult
         error?: string
       }>
+      pickAndReadNovelText: () => Promise<{
+        success: boolean
+        canceled?: boolean
+        content?: string
+        filePath?: string
+      }>
       scanProjectSkills: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>

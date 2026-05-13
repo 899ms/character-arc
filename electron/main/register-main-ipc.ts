@@ -356,6 +356,23 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  ipcMain.handle('characterarc:pick-and-read-novel-text', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择参考小说原文（用于风格指纹提取）',
+      properties: ['openFile'],
+      filters: [{ name: '小说文本', extensions: ['txt', 'md'] }]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+    const content = await readFile(result.filePaths[0], 'utf-8')
+    return { success: true, canceled: false, content, filePath: result.filePaths[0] }
+  })
+
   ipcMain.handle('characterarc:import-reference-novel-analysis', async (_event, payload: ReferenceNovelImportRequest) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {

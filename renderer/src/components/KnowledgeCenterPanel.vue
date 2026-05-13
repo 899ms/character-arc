@@ -591,14 +591,18 @@ async function handleStyleFingerprintExtract(asset: ReferenceAssetLibrary): Prom
     return
   }
 
-  const sourceText = buildDeepAnalyzeSourceText(asset)
-  if (!sourceText.trim()) {
-    message.error('找不到该参考作品的原文片段，无法提取风格指纹。')
+  const fileResult = await window.characterArc.pickAndReadNovelText() as { success: boolean; canceled?: boolean; content?: string }
+  if (!fileResult?.success || fileResult.canceled || !fileResult.content) return
+
+  if (fileResult.content.trim().length < 5000) {
+    message.error('原文内容过短（需至少5000字），无法有效提取风格指纹。')
     return
   }
 
+  const sourceText = fileResult.content.length > 80000 ? fileResult.content.slice(0, 80000) : fileResult.content
+
   fingerprintExtractingAssetId.value = asset.id
-  const loading = message.loading(`AI 正在提取《${asset.title}》的风格指纹，可能需要 2-4 分钟…`, { duration: 0 })
+  const loading = message.loading(`AI 正在从原文提取《${asset.title}》的风格指纹（${Math.round(sourceText.length / 10000)}万字样本），可能需要 2-4 分钟…`, { duration: 0 })
   try {
     const response = await window.characterArc.generateAi(JSON.parse(JSON.stringify({
       task: 'style-fingerprint-extract',

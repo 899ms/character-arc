@@ -20,6 +20,7 @@ import { runAgentTask } from '../agent'
 import { ensureWorkspaceDb } from '../../workspace-store'
 import { buildStoryStateContext, formatStoryStateForPrompt, applyStateDelta } from '../../story-state-store'
 import { extractStateDeltaFromOutput } from '../state-delta-extractor'
+import { indexChapterSegments } from '../knowledge-retrieval-v2'
 
 export async function runAiTask(
   task: AiTaskPayload,
@@ -124,6 +125,14 @@ export async function runAiTask(
           (result as { content?: string }).content = extraction.chapterContent
         }
       } catch { /* state delta 提取/写入失败不阻塞返回 */ }
+
+      // Phase 2: 章节生成后异步建立向量索引（不阻塞返回）
+      const finalContent = (result as { content?: string }).content ?? ''
+      const chapterId = String(task.context.chapterId ?? '').trim()
+      const chIdx = Number(task.context.chapterIndex ?? task.context.chapterSortOrder ?? 0)
+      if (finalContent.length > 50 && chapterId) {
+        indexChapterSegments(settings, projectId, chIdx, finalContent, chapterId).catch(() => {})
+      }
     }
 
     const finishedAt = new Date().toISOString()

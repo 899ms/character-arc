@@ -195,6 +195,20 @@ const STORY_STATE_SCHEMA = `
     urgency TEXT NOT NULL DEFAULT 'medium',
     updated_at TEXT NOT NULL
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS story_embeddings (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    chapter_index INTEGER,
+    text_content TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS idx_embeddings_project
+    ON story_embeddings(project_id, source_type);
 `
 
 // ==================== Helpers ====================

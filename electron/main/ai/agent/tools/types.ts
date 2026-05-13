@@ -27,7 +27,9 @@ export type AssistantToolUseBlock = {
   input: Record<string, unknown>
 }
 
-export type AssistantContentBlock = AssistantTextBlock | AssistantToolUseBlock
+export type AssistantReasoningBlock = { type: 'reasoning'; reasoning: string }
+
+export type AssistantContentBlock = AssistantTextBlock | AssistantToolUseBlock | AssistantReasoningBlock
 
 export type ToolResultBlock = {
   type: 'tool_result'

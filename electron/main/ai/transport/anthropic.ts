@@ -166,11 +166,13 @@ function toAnthropicMessage(message: AgentMessage): Record<string, unknown> {
   }
   return {
     role: 'assistant',
-    content: message.content.map((block) =>
-      block.type === 'text'
-        ? { type: 'text', text: block.text }
-        : { type: 'tool_use', id: block.id, name: block.name, input: block.input }
-    )
+    content: message.content
+      .filter((block) => block.type !== 'reasoning')
+      .map((block) =>
+        block.type === 'text'
+          ? { type: 'text', text: block.text }
+          : { type: 'tool_use', id: (block as { id: string }).id, name: (block as { name: string }).name, input: (block as { input: Record<string, unknown> }).input }
+      )
   }
 }
 

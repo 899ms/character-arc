@@ -147,6 +147,7 @@ export async function requestOpenAiCompatibleWithTools(
       finish_reason?: string
       message?: {
         content?: string | null
+        reasoning_content?: string | null
         tool_calls?: Array<{
           id?: string
           type?: string
@@ -159,6 +160,9 @@ export async function requestOpenAiCompatibleWithTools(
   const message = choice?.message ?? {}
   const blocks: AssistantContentBlock[] = []
 
+  if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) {
+    blocks.push({ type: 'reasoning', reasoning: message.reasoning_content })
+  }
   if (typeof message.content === 'string' && message.content.length > 0) {
     blocks.push({ type: 'text', text: message.content })
   }
@@ -201,6 +205,10 @@ function toOpenAiMessages(message: AgentMessage): Array<Record<string, unknown>>
     .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
     .map((b) => b.text)
     .join('')
+  const reasoning = message.content
+    .filter((b): b is { type: 'reasoning'; reasoning: string } => b.type === 'reasoning')
+    .map((b) => b.reasoning)
+    .join('')
   const toolCalls = message.content
     .filter((b): b is AssistantToolUseBlock => b.type === 'tool_use')
     .map((b) => ({
@@ -210,6 +218,7 @@ function toOpenAiMessages(message: AgentMessage): Array<Record<string, unknown>>
     }))
   const out: Record<string, unknown> = { role: 'assistant' }
   out.content = text || null
+  if (reasoning) out.reasoning_content = reasoning
   if (toolCalls.length > 0) out.tool_calls = toolCalls
   return [out]
 }

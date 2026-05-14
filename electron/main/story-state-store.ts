@@ -498,7 +498,7 @@ export function applyStateDelta(
       params.push(timestamp)
       params.push(projectId, relUpdate.relationship_id)
 
-      if (updates.length > 2) {
+      if (updates.length >= 2) {
         db.prepare(
           `UPDATE story_relationships SET ${updates.join(', ')} WHERE project_id = ? AND relationship_id = ?`
         ).run(...params)

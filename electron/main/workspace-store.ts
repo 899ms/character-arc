@@ -31,19 +31,20 @@ function getWorkspaceDbPath(): string {
 }
 
 let workspaceDb: DatabaseSync | null = null
+let dbInitPromise: Promise<DatabaseSync> | null = null
 
 async function ensureWorkspaceDir(): Promise<void> {
   await mkdir(getWorkspaceDirPath(), { recursive: true })
 }
 
 export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
-  if (workspaceDb) {
-    return workspaceDb
-  }
+  if (workspaceDb) return workspaceDb
+  if (dbInitPromise) return dbInitPromise
 
-  await ensureWorkspaceDir()
-  workspaceDb = new DatabaseSync(getWorkspaceDbPath())
-  workspaceDb.exec(`
+  dbInitPromise = (async () => {
+    await ensureWorkspaceDir()
+    const db = new DatabaseSync(getWorkspaceDbPath())
+    db.exec(`
     PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -295,34 +296,38 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
     ) STRICT;
   `)
 
-  const worldviewColumns = workspaceDb.prepare(`PRAGMA table_info(worldview_entries)`).all() as Array<{ name: string }>
+  const worldviewColumns = db.prepare(`PRAGMA table_info(worldview_entries)`).all() as Array<{ name: string }>
   const worldviewColumnNames = new Set(worldviewColumns.map((column) => column.name))
 
   if (!worldviewColumnNames.has('created_at')) {
-    workspaceDb.exec(`ALTER TABLE worldview_entries ADD COLUMN created_at TEXT NOT NULL DEFAULT '';`)
+    db.exec(`ALTER TABLE worldview_entries ADD COLUMN created_at TEXT NOT NULL DEFAULT '';`)
   }
 
   if (!worldviewColumnNames.has('updated_at')) {
-    workspaceDb.exec(`ALTER TABLE worldview_entries ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';`)
+    db.exec(`ALTER TABLE worldview_entries ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';`)
   }
 
-  workspaceDb.exec(`
+  db.exec(`
     UPDATE worldview_entries
     SET created_at = COALESCE(NULLIF(created_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at = COALESCE(NULLIF(updated_at, ''), created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     WHERE created_at = '' OR updated_at = '';
   `)
 
-  ensureAppSettingsColumns(workspaceDb)
-  ensureChapterColumns(workspaceDb)
-  ensureProjectColumns(workspaceDb)
-  ensureProjectScopedColumns(workspaceDb)
-  ensureVolumeColumns(workspaceDb)
-  ensureWorkflowDocumentColumns(workspaceDb)
-  initStoryStateSchema(workspaceDb)
+  ensureAppSettingsColumns(db)
+  ensureChapterColumns(db)
+  ensureProjectColumns(db)
+  ensureProjectScopedColumns(db)
+  ensureVolumeColumns(db)
+  ensureWorkflowDocumentColumns(db)
+  initStoryStateSchema(db)
 
-  await migrateLegacyWorkspaceFile(workspaceDb)
-  return workspaceDb
+  await migrateLegacyWorkspaceFile(db)
+  workspaceDb = db
+  return db
+  })()
+
+  return dbInitPromise
 }
 
 function ensureAppSettingsColumns(db: DatabaseSync): void {

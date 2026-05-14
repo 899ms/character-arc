@@ -21,6 +21,7 @@ export type AppSettings = {
   model: string
   apiKey: string
   baseUrl: string
+  embeddingModel: string
   imageModel: string
   imageApiKey: string
   imageBaseUrl: string

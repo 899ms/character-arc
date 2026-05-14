@@ -34,6 +34,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     model: settings.model?.trim() || defaults.model,
     apiKey: settings.apiKey?.trim() || '',
     baseUrl: settings.baseUrl?.trim() || defaults.baseUrl,
+    embeddingModel: settings.embeddingModel?.trim() || '',
     imageModel: settings.imageModel?.trim() || '',
     imageApiKey: settings.imageApiKey?.trim() || '',
     imageBaseUrl: settings.imageBaseUrl?.trim() || ''

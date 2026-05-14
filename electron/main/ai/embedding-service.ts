@@ -54,12 +54,13 @@ export async function embedTexts(
 
   const baseUrl = (normalized.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
   const apiKey = normalized.apiKey
-  const dimKey = `${normalized.provider}:${normalized.model}`
+  const embeddingModel = normalized.embeddingModel || resolveEmbeddingModel(normalized.model)
+  const dimKey = `${normalized.provider}:${embeddingModel}`
 
   const results: Float32Array[] = []
   for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
     const batch = texts.slice(i, i + MAX_BATCH_SIZE)
-    const batchResults = await requestEmbeddings(baseUrl, apiKey, batch, normalized.model)
+    const batchResults = await requestEmbeddings(baseUrl, apiKey, batch, embeddingModel)
     if (batchResults.length) {
       const dim = batchResults[0].length
       const existing = observedDimensions.get(dimKey)
@@ -83,9 +84,8 @@ async function requestEmbeddings(
   baseUrl: string,
   apiKey: string,
   inputs: string[],
-  chatModel: string
+  embeddingModel: string
 ): Promise<Float32Array[]> {
-  const embeddingModel = resolveEmbeddingModel(chatModel)
   const url = `${baseUrl}/embeddings`
 
   const response = await fetch(url, {

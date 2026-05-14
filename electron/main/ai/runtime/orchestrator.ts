@@ -405,8 +405,8 @@ export async function extractStateDeltaViaLLM(
     user: `当前世界状态：
 ${stateSnapshot || '（空）'}
 
-本章正文（节选前3000字）：
-${chapterContent.slice(0, 3000)}
+本章正文：
+${chapterContent}
 
 请提取本章的状态变更JSON：`
   }

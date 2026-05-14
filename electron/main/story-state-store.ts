@@ -148,6 +148,9 @@ const STORY_STATE_SCHEMA = `
     updated_at TEXT NOT NULL
   ) STRICT;
 
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_foreshadowing_project_fid
+    ON story_foreshadowing(project_id, foreshadowing_id);
+
   CREATE TABLE IF NOT EXISTS story_relationships (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
@@ -160,6 +163,9 @@ const STORY_STATE_SCHEMA = `
     last_interaction_chapter INTEGER,
     updated_at TEXT NOT NULL
   ) STRICT;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_relationships_project_rid
+    ON story_relationships(project_id, relationship_id);
 
   CREATE TABLE IF NOT EXISTS story_timeline (
     id TEXT PRIMARY KEY,
@@ -512,7 +518,7 @@ export function applyStateDelta(
   if (delta.foreshadowing_delta) {
     for (const planted of delta.foreshadowing_delta.planted) {
       db.prepare(`
-        INSERT INTO story_foreshadowing
+        INSERT OR IGNORE INTO story_foreshadowing
           (id, project_id, foreshadowing_id, type, description, status, planted_chapter,
            planted_method, payoff_chapter, clues_json, connections_json, updated_at)
         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, '[]', '[]', ?)

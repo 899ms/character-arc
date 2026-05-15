@@ -152,6 +152,32 @@ function compareKnowledgeDocuments(a: KnowledgeDocument, b: KnowledgeDocument): 
   return b.id.localeCompare(a.id)
 }
 
+function resolveReferenceChunkOrder(document: KnowledgeDocument): number {
+  const value = Number(document.metadata?.chunkOrder ?? Number.NaN)
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
+}
+
+export function compareReferenceAssetDocuments(a: KnowledgeDocument, b: KnowledgeDocument): number {
+  if (a.sourceType === 'reference-summary' && b.sourceType !== 'reference-summary') {
+    return -1
+  }
+  if (b.sourceType === 'reference-summary' && a.sourceType !== 'reference-summary') {
+    return 1
+  }
+
+  const orderDiff = resolveReferenceChunkOrder(a) - resolveReferenceChunkOrder(b)
+  if (orderDiff !== 0) {
+    return orderDiff
+  }
+
+  const createdDiff = resolveKnowledgeTimestamp(a.createdAt) - resolveKnowledgeTimestamp(b.createdAt)
+  if (createdDiff !== 0) {
+    return createdDiff
+  }
+
+  return a.id.localeCompare(b.id)
+}
+
 function buildKnowledgeDuplicateKey(document: KnowledgeDocument): string {
   const titleKey = normalizeKnowledgeText(document.title || document.sourceLabel || '')
   const bodyKey = normalizeKnowledgeText(document.summary || document.content).slice(0, 320)
@@ -236,17 +262,9 @@ function buildReferenceAssetLibrary(
   documentViews: KnowledgeDocumentView[],
   fallbackTitle = ''
 ): ReferenceAssetLibrary {
-  const sortedDocumentViews = [...documentViews].sort((left, right) => {
-    if (left.document.sourceType === 'reference-summary' && right.document.sourceType !== 'reference-summary') {
-      return -1
-    }
-
-    if (right.document.sourceType === 'reference-summary' && left.document.sourceType !== 'reference-summary') {
-      return 1
-    }
-
-    return compareKnowledgeDocuments(left.document, right.document)
-  })
+  const sortedDocumentViews = [...documentViews].sort((left, right) =>
+    compareReferenceAssetDocuments(left.document, right.document)
+  )
 
   const primaryDocument = sortedDocumentViews[0] ?? null
   const analysis = referenceWork?.analysis

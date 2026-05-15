@@ -5,7 +5,6 @@ import {
   NAlert,
   NButton,
   NCard,
-  NCheckbox,
   NCollapse,
   NCollapseItem,
   NDescriptions,
@@ -27,6 +26,7 @@ import {
 import {
   buildKnowledgeCenterState,
   buildReferenceAssetLibraries,
+  compareReferenceAssetDocuments,
   type KnowledgeDocumentView,
   type ReferenceAssetLibrary
 } from '@/features/knowledge/knowledgeCenter'
@@ -46,8 +46,6 @@ const allState = computed(() => buildKnowledgeCenterState(appStore.knowledgeDocu
 const referenceAssets = computed(() =>
   buildReferenceAssetLibraries(appStore.referenceWorks, allState.value.documents)
 )
-const currentProject = computed(() => appStore.currentProject)
-const selectedReferenceWorkIds = computed(() => currentProject.value?.selectedReferenceWorkIds ?? [])
 const detailVisible = computed({
   get: () => Boolean(selectedDocument.value),
   set: (value: boolean) => {
@@ -334,38 +332,10 @@ const groupedAssets = computed(() => {
   })
 })
 
-function isReferenceSelected(asset: ReferenceAssetLibrary): boolean {
-  return selectedReferenceWorkIds.value.includes(asset.id)
-}
-
-function toggleReferenceSelection(asset: ReferenceAssetLibrary, checked: boolean): void {
-  const project = currentProject.value
-  if (!project?.id) {
-    message.warning('请先选择一个项目，再勾选参考书。')
-    return
-  }
-
-  const nextIds = checked
-    ? Array.from(new Set([...selectedReferenceWorkIds.value, asset.id]))
-    : selectedReferenceWorkIds.value.filter((id) => id !== asset.id)
-
-  appStore.updateProject(project.id, {
-    selectedReferenceWorkIds: nextIds
-  })
-}
-
 function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentView[] {
   return allState.value.documents
     .filter((item) => asset.relatedDocumentIds.includes(item.document.id))
-    .sort((left, right) => {
-      if (left.document.sourceType === 'reference-summary' && right.document.sourceType !== 'reference-summary') {
-        return -1
-      }
-      if (right.document.sourceType === 'reference-summary' && left.document.sourceType !== 'reference-summary') {
-        return 1
-      }
-      return right.document.updatedAt.localeCompare(left.document.updatedAt)
-    })
+    .sort((left, right) => compareReferenceAssetDocuments(left.document, right.document))
 }
 
 const progressStepPhases = ['extracting', 'chunk-analysis', 'aggregating', 'saving'] as const
@@ -429,14 +399,6 @@ const progressCurrentStep = computed(() => {
       <n-card v-for="asset in groupedAssets" :key="asset.id" size="small">
         <template #header>
           <div class="asset-header">
-            <div class="asset-header-top">
-              <n-checkbox
-                :checked="isReferenceSelected(asset)"
-                @update:checked="(checked: boolean) => toggleReferenceSelection(asset, checked)"
-              >
-                用于流程生成
-              </n-checkbox>
-            </div>
             <strong>{{ asset.title }}</strong>
             <span>{{ asset.source }}<template v-if="asset.fileName"> &middot; {{ asset.fileName }}</template></span>
           </div>
@@ -656,13 +618,6 @@ const progressCurrentStep = computed(() => {
   min-width: 0;
   flex-direction: column;
   gap: 2px;
-}
-
-.asset-header-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
 }
 
 .asset-header strong {

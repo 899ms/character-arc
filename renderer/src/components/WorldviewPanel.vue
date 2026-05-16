@@ -279,7 +279,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 
 .section-head h2 {
   margin: 0 0 8px;
-  color: #1d1d1f;
+  color: var(--arc-text-primary);
   font-size: clamp(30px, 3.4vw, 38px);
   font-weight: 650;
   letter-spacing: -0.04em;
@@ -287,7 +287,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 
 .section-head p {
   margin: 0;
-  color: #86868b;
+  color: var(--arc-text-hint);
   font-size: 15px;
 }
 
@@ -319,8 +319,8 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 }
 
 .soft-button {
-  background: #f5f5f7;
-  color: #1d1d1f;
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-text-primary);
 }
 
 .soft-button :deep(svg) {
@@ -328,7 +328,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 }
 
 .soft-button:hover {
-  background: #ebedf0;
+  background: var(--arc-bg-surface-hover);
 }
 
 .primary-button {
@@ -381,7 +381,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 }
 
 .world-card:hover::after {
-  color: #9ca3af;
+  color: var(--arc-text-hint);
 }
 
 .card-top {
@@ -422,7 +422,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
 }
 
 .more-button:hover {
-  color: #6b7280;
+  color: var(--arc-text-secondary);
 }
 
 .world-card h3 {
@@ -446,7 +446,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
   justify-content: space-between;
   gap: 12px;
   margin-top: 16px;
-  color: #98a2b3;
+  color: var(--arc-text-hint);
   font-size: 11px;
   font-weight: 700;
 }
@@ -461,7 +461,7 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
   border: 2px dashed var(--arc-border);
   border-radius: 10px;
   background: transparent;
-  color: #86868b;
+  color: var(--arc-text-hint);
   cursor: pointer;
   font-size: 15px;
   font-weight: 650;

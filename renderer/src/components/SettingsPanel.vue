@@ -627,7 +627,7 @@ watch(
   gap: 10px;
   border: 1px solid var(--arc-border);
   border-radius: 8px;
-  color: #18181b;
+  color: var(--arc-text-primary);
   cursor: pointer;
   padding: 14px;
   text-align: left;
@@ -650,11 +650,11 @@ watch(
 .style-preset-card strong {
   font-size: 14px;
   font-weight: 700;
-  color: #18181b;
+  color: var(--arc-text-primary);
 }
 
 .style-preset-card span {
-  color: #52525b;
+  color: var(--arc-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }

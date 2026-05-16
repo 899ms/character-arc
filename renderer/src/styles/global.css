@@ -69,6 +69,10 @@ body {
   --arc-selection-bg: #5e81ac;
   --arc-selection-text: #eceff4;
   --arc-caret-color: #88c0d0;
+  --arc-success: #4ade80;
+  --arc-warning: #fbbf24;
+  --arc-danger: #f87171;
+  --arc-text-hint: #9ba4b4;
 }
 
 button,

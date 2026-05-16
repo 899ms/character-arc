@@ -173,8 +173,8 @@ function restore(version: ChapterVersion): void {
   color: var(--arc-text-secondary);
 }
 
-.chip.success { background: #e5f4ea; color: #1f7a3a; }
-.chip.warning { background: #fff4e5; color: #b25e09; }
+.chip.success { background: color-mix(in srgb, var(--arc-success) 14%, var(--arc-bg-surface)); color: var(--arc-success); }
+.chip.warning { background: color-mix(in srgb, var(--arc-warning) 14%, var(--arc-bg-surface)); color: var(--arc-warning); }
 .chip.accent { background: var(--arc-primary-soft); color: var(--arc-primary); }
 
 .words {

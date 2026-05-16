@@ -253,11 +253,22 @@ export function createWindowManager(options: CreateWindowManagerOptions) {
     return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
   }
 
-  function setTitleBarOverlay(options: { color: string; symbolColor: string }): void {
-    if (process.platform !== 'win32') {
-      return
+  function updateTitleBarOverlayColors(): void {
+    const dark = nativeTheme.shouldUseDarkColors
+    const color = dark ? '#0c0c0e' : '#f8f7f4'
+    const symbolColor = dark ? '#f4f4f5' : '#1c1917'
+    const overlay = { color, symbolColor, height: 40 }
+    const assistantOverlay = { color, symbolColor, height: 36 }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitleBarOverlay(overlay)
+    }
+    if (assistantWindow && !assistantWindow.isDestroyed()) {
+      assistantWindow.setTitleBarOverlay(assistantOverlay)
     }
   }
+
+  nativeTheme.on('updated', updateTitleBarOverlayColors)
 
   return {
     createMainWindow,
@@ -270,6 +281,6 @@ export function createWindowManager(options: CreateWindowManagerOptions) {
     sendWindowEvent,
     broadcastWindowEvent,
     emitAssistantWindowVisibility,
-    setTitleBarOverlay
+    updateTitleBarOverlayColors
   }
 }

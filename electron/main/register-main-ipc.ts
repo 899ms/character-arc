@@ -723,8 +723,8 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  ipcMain.handle('characterarc:set-titlebar-overlay', (_event, options: { color: string; symbolColor: string }) => {
-    deps.windowManager.setTitleBarOverlay(options)
+  ipcMain.handle('characterarc:set-titlebar-overlay', () => {
+    deps.windowManager.updateTitleBarOverlayColors()
   })
 
   ipcMain.handle('characterarc:save-workspace', async (_event, payload: unknown) => {

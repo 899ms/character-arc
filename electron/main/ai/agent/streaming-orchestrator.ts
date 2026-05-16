@@ -7,10 +7,11 @@ import { buildRunMeta, buildResponsePreview } from '../runtime/run-meta'
 import { logPrompt, logResponse, logError } from '../runtime/logging'
 import { runStreamingAgentLoop } from './streaming-loop'
 import { createSkillTools } from './tools/skill-tools'
+import { createKnowledgeTools } from './tools/knowledge-tools'
 import { createChapterTools } from './tools/chapter-tools'
 import { createToolRegistry } from './tools/registry'
 import { buildAgentBehaviorRules, buildSkillIndex } from './system-prompt'
-import type { AiTaskKnowledgeContext } from '../shared-types'
+import type { AiKnowledgeDocumentDraft, AiTaskKnowledgeContext } from '../shared-types'
 
 function stripSkillFrontmatter(content: string): string {
   const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
@@ -76,12 +77,18 @@ export async function runStreamingAgentTask(
     allowScriptExecution: (skill) => skill.scope === 'builtin'
   })
 
+  const producedKnowledgeDocuments: AiKnowledgeDocumentDraft[] = []
+  const knowledgeTools = createKnowledgeTools({
+    collectDocument: (doc) => producedKnowledgeDocuments.push(doc),
+    defaultSourceLabel: String(task.context.chapterTitle ?? 'agent')
+  })
+
   const chapterTools = createChapterTools({
     currentChapterId: chapterId || '',
     onEditApplied: handlers.onEditApplied
   })
 
-  const registry = createToolRegistry([...skillTools, ...chapterTools])
+  const registry = createToolRegistry([...skillTools, ...knowledgeTools, ...chapterTools])
 
   logPrompt('AGENT_STREAM', settings, { system: systemPrompt, user: prompt.user }, task.task, usedSkillIds)
   const requestStartedAt = Date.now()
@@ -109,6 +116,9 @@ export async function runStreamingAgentTask(
     )
     meta.toolCalls = loopResult.toolCalls
     meta.agentIterations = loopResult.iterations
+    if (producedKnowledgeDocuments.length > 0) {
+      meta.producedKnowledgeDocuments = producedKnowledgeDocuments
+    }
 
     return { result, meta }
   } catch (error) {

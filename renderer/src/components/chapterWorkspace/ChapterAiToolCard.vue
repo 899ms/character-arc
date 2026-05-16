@@ -76,8 +76,8 @@ const toolIcon = computed(() => {
   color: var(--arc-primary);
 }
 
-.icon-done { color: #16a34a; }
-.icon-error { color: #dc2626; }
+.icon-done { color: var(--arc-success, #16a34a); }
+.icon-error { color: var(--arc-error, #dc2626); }
 
 .tool-duration {
   margin-left: auto;

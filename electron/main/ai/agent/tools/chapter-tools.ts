@@ -68,6 +68,8 @@ export function createChapterTools(callbacks: ChapterToolCallbacks): Tool[] {
       }
     },
     handler: async (input, ctx) => {
+      if (!currentChapterId) return { content: '错误：当前没有选中的章节，无法执行编辑操作。请先让用户选择一个章节。', isError: true }
+
       const operation = String(input.operation) as 'replace' | 'insert' | 'append'
       const content = String(input.content || '')
       const search = input.search ? String(input.search) : undefined

@@ -12,10 +12,21 @@ const emit = defineEmits<{
 
 const text = ref('')
 
+type AiMode = '问答' | '改写' | '续写'
+const modes: AiMode[] = ['问答', '改写', '续写']
+const activeMode = ref<AiMode>('问答')
+
+const placeholders: Record<AiMode, string> = {
+  '问答': '向 AI 提问，或描述你想要的修改 (Enter 发送)',
+  '改写': '描述你想如何改写选中的段落...',
+  '续写': '给出续写方向，或留空让 AI 自由发挥...'
+}
+
 function handleSend(): void {
   const value = text.value.trim()
   if (!value || props.disabled) return
-  emit('send', value)
+  const prefix = activeMode.value !== '问答' ? `[${activeMode.value}] ` : ''
+  emit('send', prefix + value)
   text.value = ''
 }
 
@@ -32,13 +43,26 @@ function handleKey(event: KeyboardEvent): void {
     <div class="wrap" :class="{ disabled }">
       <textarea
         v-model="text"
-        :placeholder="disabled ? 'AI 正在生成...' : '向 AI 提问，或描述你想要的修改 (Enter 发送)'"
+        :placeholder="disabled ? 'AI 正在生成...' : placeholders[activeMode]"
         :disabled="disabled"
         @keydown="handleKey"
       />
-      <button class="send" :disabled="disabled || !text.trim()" @click="handleSend">
-        <ArrowUp :size="14" />
-      </button>
+      <div class="input-toolbar">
+        <div class="mode-toggle">
+          <button
+            v-for="mode in modes"
+            :key="mode"
+            class="mode-opt"
+            :class="{ active: activeMode === mode }"
+            @click="activeMode = mode"
+          >
+            {{ mode }}
+          </button>
+        </div>
+        <button class="send" :disabled="disabled || !text.trim()" @click="handleSend">
+          <ArrowUp :size="14" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -73,21 +97,54 @@ function handleKey(event: KeyboardEvent): void {
   border: none;
   outline: none;
   background: transparent;
-  padding: 10px 44px 10px 12px;
+  padding: 10px 12px 36px;
   font-size: 13px;
   line-height: 1.55;
   resize: none;
   font-family: inherit;
   color: var(--arc-text-primary);
   user-select: text;
-  min-height: 64px;
+  min-height: 72px;
   max-height: 160px;
 }
 
-.send {
+.input-toolbar {
   position: absolute;
-  right: 6px;
   bottom: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  background: var(--arc-bg-surface-hover);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-opt {
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  transition: 0.15s;
+}
+
+.mode-opt.active {
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-weight: 500;
+}
+
+.send {
   width: 28px;
   height: 28px;
   border-radius: 6px;

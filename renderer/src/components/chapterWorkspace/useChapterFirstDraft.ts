@@ -159,6 +159,7 @@ export function useChapterFirstDraft(): {
           label: 'AI 生成章节初稿',
           description: `正在生成《${chapter.title}》初稿`,
           panel: 'chapters',
+          timeoutMs: 0,
           onCancel: () => { void stop() }
         },
         async () => {

@@ -28,7 +28,8 @@ export function useChapterSummary(): {
           kind: 'chapter-summary',
           label: 'AI 生成章节摘要',
           description: `为《${chapter.title}》提炼摘要`,
-          panel: 'chapters'
+          panel: 'chapters',
+          timeoutMs: 180_000
         },
         () =>
           window.characterArc.generateAi(toIpcPayload({

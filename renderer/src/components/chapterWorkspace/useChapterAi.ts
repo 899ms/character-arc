@@ -13,6 +13,7 @@ export interface ChapterAiMessage {
   id: string
   role: ChapterAiRole
   content: string
+  createdAt: number
   /** 与 AI 上下文相关的章节 ID，用于切章后区分 */
   chapterId?: string
 }
@@ -51,6 +52,7 @@ export function useChapterAi(): {
       id: nextMessageId(),
       role,
       content,
+      createdAt: Date.now(),
       chapterId: appStore.selectedChapter?.id
     }
     messages.value.push(item)
@@ -77,7 +79,8 @@ export function useChapterAi(): {
           kind: 'chapter-assistant',
           label: 'AI 章节助手',
           description: '与创作助理对话',
-          panel: 'chapters'
+          panel: 'chapters',
+          timeoutMs: 180_000
         },
         async () => {
           const projectSkills = await loadEnabledProjectSkillsContext(appStore.currentProject, 'draft')

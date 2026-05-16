@@ -42,7 +42,8 @@ export function useChapterHumanize(): {
           kind: 'chapter-assistant',
           label: '降低 AI 感润色',
           description: '正在对选中文本做人化改写',
-          panel: 'chapters'
+          panel: 'chapters',
+          timeoutMs: 180_000
         },
         async () => {
           const projectSkills = await loadEnabledProjectSkillsContext(appStore.currentProject, 'draft')

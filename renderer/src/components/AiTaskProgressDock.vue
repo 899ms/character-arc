@@ -26,9 +26,11 @@ const userCollapsed = ref(false)
 const nowTick = ref(Date.now())
 let tickTimer: number | null = null
 
-/** 面板是否可见：有运行中任务或有正在淡出的已完成任务时显示 */
+/** 面板是否可见：有运行中任务或有正在淡出的已完成任务时显示。
+ *  chapter-assistant 类型任务已在 AI 对话面板中有 typing 指示，不重复展示。 */
 const visibleRuns = computed<AiTaskRun[]>(() => {
   return [...appStore.runningAiTasks, ...appStore.recentAiTasks]
+    .filter((run) => run.kind !== 'chapter-assistant')
 })
 
 const hasVisibleRuns = computed(() => visibleRuns.value.length > 0)

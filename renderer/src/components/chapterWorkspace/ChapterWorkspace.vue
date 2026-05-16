@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Minimize } from 'lucide-vue-next'
 import { NDrawer, NDrawerContent } from 'naive-ui'
 import ChapterTreeSidebar from './ChapterTreeSidebar.vue'
@@ -13,6 +13,7 @@ const focusMode = ref(false)
 const sidebarDrawerVisible = ref(false)
 const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
 const isCompact = computed(() => viewportWidth.value <= COMPACT_BREAKPOINT)
+const aiPanelRef = ref<InstanceType<typeof ChapterAiPanel> | null>(null)
 
 function toggleAi(): void {
   aiOpen.value = !aiOpen.value
@@ -24,6 +25,15 @@ function toggleFocus(): void {
 
 function toggleSidebar(): void {
   sidebarDrawerVisible.value = !sidebarDrawerVisible.value
+}
+
+function handleSelectionAction(action: string, text: string): void {
+  aiOpen.value = true
+  const snippet = text.length > 60 ? text.slice(0, 60) + '...' : text
+  const prompt = `[${action}] ${snippet}`
+  nextTick(() => {
+    aiPanelRef.value?.sendPrompt(prompt)
+  })
 }
 
 function syncViewport(): void {
@@ -65,8 +75,9 @@ onBeforeUnmount(() => {
       @toggle-ai="toggleAi"
       @toggle-focus="toggleFocus"
       @toggle-sidebar="toggleSidebar"
+      @selection-action="handleSelectionAction"
     />
-    <ChapterAiPanel v-if="aiOpen" class="ws-ai" @close="aiOpen = false" />
+    <ChapterAiPanel v-if="aiOpen" ref="aiPanelRef" class="ws-ai" @close="aiOpen = false" />
     <button v-if="focusMode" class="focus-exit" @click="toggleFocus">
       <Minimize :size="13" />
       <span>退出专注 (Esc)</span>

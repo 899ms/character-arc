@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { ArrowDown, Copy, Replace } from 'lucide-vue-next'
+import { ArrowDown, Copy, Replace, RotateCw } from 'lucide-vue-next'
 import { useMessage } from 'naive-ui'
 import type { ChapterAiMessage } from './useChapterAi'
 
@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   apply: [content: string, mode: 'cursor' | 'append' | 'replace-selection']
+  regenerate: [prompt: string]
 }>()
 
 const message = useMessage()
@@ -23,6 +24,20 @@ watch(
     if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight
   })
 )
+
+function formatTime(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
+function findUserPromptBefore(msgId: string): string | undefined {
+  const idx = props.messages.findIndex((m) => m.id === msgId)
+  if (idx <= 0) return undefined
+  for (let i = idx - 1; i >= 0; i--) {
+    if (props.messages[i].role === 'user') return props.messages[i].content
+  }
+  return undefined
+}
 
 async function copyMessage(content: string): Promise<void> {
   try {
@@ -61,7 +76,16 @@ async function copyMessage(content: string): Promise<void> {
         <button class="mini" title="复制" @click="copyMessage(msg.content)">
           <Copy :size="11" />
         </button>
+        <button
+          class="mini"
+          title="重新生成"
+          :disabled="isResponding"
+          @click="() => { const p = findUserPromptBefore(msg.id); if (p) emit('regenerate', p) }"
+        >
+          <RotateCw :size="11" /> 重生成
+        </button>
       </div>
+      <div v-if="msg.createdAt" class="msg-meta">{{ formatTime(msg.createdAt) }}</div>
     </div>
 
     <div v-if="isResponding" class="msg assistant">
@@ -181,5 +205,17 @@ async function copyMessage(content: string): Promise<void> {
 .mini.primary:hover {
   background: var(--arc-primary-hover);
   color: white;
+}
+
+.mini:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.msg-meta {
+  font-size: 10px;
+  color: var(--arc-text-hint);
+  padding: 0 4px;
 }
 </style>

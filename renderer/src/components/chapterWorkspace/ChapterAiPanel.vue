@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
-import { Plus, Sparkles, X } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { FileText, GitMerge, Globe, Plus, Sparkles, Users, X } from 'lucide-vue-next'
 import { NTooltip, useMessage } from 'naive-ui'
 import ChapterAiMessages from './ChapterAiMessages.vue'
 import ChapterAiInput from './ChapterAiInput.vue'
@@ -13,6 +13,7 @@ import { useChapterThreadDetect } from './useChapterThreadDetect'
 import { useChapterSummary } from './useChapterSummary'
 import { useChapterInspiration, type ChapterInspirationFocus } from './useChapterInspiration'
 import { useChapterHumanize } from './useChapterHumanize'
+import { useAppStore } from '@/stores/app'
 import type { ChapterInsertionMode } from '@/types/app'
 
 defineEmits<{
@@ -20,12 +21,31 @@ defineEmits<{
 }>()
 
 const message = useMessage()
+const appStore = useAppStore()
 const { messages, isResponding, hasSelection, send, resetMessages, applyToChapter } = useChapterAi()
 const draft = useChapterFirstDraft()
 const detect = useChapterThreadDetect()
 const summary = useChapterSummary()
 const inspiration = useChapterInspiration()
 const humanize = useChapterHumanize()
+
+const contextChips = computed(() => {
+  const chips: { label: string; icon: string; active: boolean }[] = []
+  const chapter = appStore.selectedChapter
+  if (chapter) {
+    chips.push({ label: '当前章节', icon: 'file-text', active: true })
+    if (chapter.summary) {
+      chips.push({ label: '章节大纲', icon: 'git-merge', active: true })
+    }
+  }
+  if (appStore.characters.length > 0) {
+    chips.push({ label: '角色卡', icon: 'users', active: true })
+  }
+  if (appStore.worldviewEntries.length > 0) {
+    chips.push({ label: '世界观', icon: 'globe', active: true })
+  }
+  return chips
+})
 
 function handleApply(content: string, mode: ChapterInsertionMode): void {
   const ok = applyToChapter(content, mode)
@@ -83,6 +103,12 @@ async function handleHumanize(): Promise<void> {
   else message.success('已使用降低 AI 感结果替换选区')
 }
 
+function sendPrompt(prompt: string): void {
+  void send(prompt)
+}
+
+defineExpose({ sendPrompt })
+
 onMounted(() => draft.registerStreamListener())
 onBeforeUnmount(() => draft.unregisterStreamListener())
 </script>
@@ -112,6 +138,16 @@ onBeforeUnmount(() => draft.unregisterStreamListener())
       </div>
     </header>
 
+    <div v-if="contextChips.length" class="context-strip">
+      <span v-for="chip in contextChips" :key="chip.label" class="ctx-chip" :class="{ active: chip.active }">
+        <FileText v-if="chip.icon === 'file-text'" :size="11" />
+        <GitMerge v-if="chip.icon === 'git-merge'" :size="11" />
+        <Users v-if="chip.icon === 'users'" :size="11" />
+        <Globe v-if="chip.icon === 'globe'" :size="11" />
+        {{ chip.label }}
+      </span>
+    </div>
+
     <ChapterAiQuickActions
       :is-draft-running="draft.isGenerating.value"
       :is-detect-running="detect.isDetecting.value"
@@ -135,6 +171,7 @@ onBeforeUnmount(() => draft.unregisterStreamListener())
       :is-responding="isResponding"
       :has-selection="hasSelection"
       @apply="handleApply"
+      @regenerate="send"
     />
 
     <ChapterAiInput :disabled="isResponding" @send="send" />
@@ -218,6 +255,33 @@ onBeforeUnmount(() => draft.unregisterStreamListener())
 .icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.context-strip {
+  padding: 8px 12px;
+  background: var(--arc-bg-weak);
+  border-bottom: 1px solid var(--arc-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--arc-text-secondary);
+}
+
+.ctx-chip.active {
+  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 20%, transparent);
+  color: var(--arc-primary);
 }
 
 .selection-hint {

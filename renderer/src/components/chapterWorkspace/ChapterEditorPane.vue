@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { ChevronRight, Folder, FocusIcon, History, Menu, Minus, Plus, Sparkles } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Sparkles, Wand2 } from 'lucide-vue-next'
 import { NTag, NTooltip } from 'naive-ui'
 import SimpleChapterEditor from './SimpleChapterEditor.vue'
 import ChapterVersionDialog from './ChapterVersionDialog.vue'
@@ -19,6 +19,7 @@ const emit = defineEmits<{
   toggleAi: []
   toggleFocus: []
   toggleSidebar: []
+  selectionAction: [action: string, text: string]
 }>()
 
 const appStore = useAppStore()
@@ -61,6 +62,67 @@ const saveStatusText = computed(() => {
 const chapterIndex = computed(() => {
   const i = appStore.chapters.findIndex((c) => c.id === currentChapter.value?.id)
   return i >= 0 ? i + 1 : 1
+})
+
+const selToolbarVisible = ref(false)
+const selToolbarTop = ref(0)
+const selToolbarLeft = ref(0)
+const scrollRef = ref<HTMLDivElement | null>(null)
+
+function handleSelectionChange(): void {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+    selToolbarVisible.value = false
+    return
+  }
+  const range = sel.getRangeAt(0)
+  const scrollEl = scrollRef.value
+  if (!scrollEl || !scrollEl.contains(range.commonAncestorContainer)) {
+    selToolbarVisible.value = false
+    return
+  }
+  const rect = range.getBoundingClientRect()
+  if (rect.width === 0 && rect.height === 0) {
+    selToolbarVisible.value = false
+    return
+  }
+  const scrollRect = scrollEl.getBoundingClientRect()
+  const toolbarH = 36
+  const gap = 6
+  let top = rect.top - toolbarH - gap
+  if (top < scrollRect.top) top = rect.bottom + gap
+  const toolbarW = 360
+  let left = rect.left + rect.width / 2
+  const minLeft = scrollRect.left + toolbarW / 2 + 4
+  const maxLeft = scrollRect.right - toolbarW / 2 - 4
+  if (left < minLeft) left = minLeft
+  else if (left > maxLeft) left = maxLeft
+  selToolbarTop.value = top
+  selToolbarLeft.value = left
+  selToolbarVisible.value = true
+}
+
+function handleSelAction(action: string): void {
+  const sel = window.getSelection()
+  const text = sel?.toString().trim() ?? ''
+  if (!text) return
+  selToolbarVisible.value = false
+  emit('selectionAction', action, text)
+}
+
+function handleMouseDown(e: MouseEvent): void {
+  const toolbar = document.querySelector('.arc-sel-toolbar')
+  if (toolbar?.contains(e.target as Node)) return
+  selToolbarVisible.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('selectionchange', handleSelectionChange)
+  document.addEventListener('mousedown', handleMouseDown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('selectionchange', handleSelectionChange)
+  document.removeEventListener('mousedown', handleMouseDown)
 })
 </script>
 
@@ -111,12 +173,19 @@ const chapterIndex = computed(() => {
       </div>
     </header>
 
-    <div class="ep-scroll arc-scrollbar">
+    <div ref="scrollRef" class="ep-scroll arc-scrollbar">
       <div class="ep-canvas" :style="{ fontSize: fontSize + 'px' }">
         <div v-if="!currentChapter" class="ep-empty">
           请在左侧选择一个章节，或新建一个章节开始写作
         </div>
         <template v-else>
+          <input
+            class="ep-title"
+            :value="currentChapter.title"
+            placeholder="章节标题"
+            @change="(e) => appStore.updateChapter(currentChapter!.id, { title: (e.target as HTMLInputElement).value })"
+          />
+
           <div class="ep-meta-row">
             <n-tag size="small" :bordered="false">{{ wordCount.toLocaleString() }} 字</n-tag>
             <n-tag size="small" :bordered="false">目标 {{ formatChapterWordTargetLabel(currentChapter.wordTarget) }}</n-tag>
@@ -135,6 +204,33 @@ const chapterIndex = computed(() => {
         </template>
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition name="arc-sel-fade">
+        <div
+          v-if="selToolbarVisible"
+          class="arc-sel-toolbar"
+          :style="{ top: selToolbarTop + 'px', left: selToolbarLeft + 'px' }"
+        >
+          <button class="arc-sel-btn" @click="handleSelAction('润色')">
+            <Wand2 :size="12" /> 润色
+          </button>
+          <button class="arc-sel-btn" @click="handleSelAction('改写')">
+            <RefreshCw :size="12" /> 改写
+          </button>
+          <button class="arc-sel-btn" @click="handleSelAction('扩写')">
+            <Maximize2 :size="12" /> 扩写
+          </button>
+          <button class="arc-sel-btn" @click="handleSelAction('缩写')">
+            <Minimize2 :size="12" /> 缩写
+          </button>
+          <span class="arc-sel-divider" />
+          <button class="arc-sel-btn" @click="handleSelAction('问AI')">
+            <MessageSquareQuote :size="12" /> 问 AI
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <footer v-if="!focusMode && currentChapter" class="ep-status">
       <div class="stats-group">
@@ -298,6 +394,7 @@ const chapterIndex = computed(() => {
 }
 
 .ep-scroll {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: 32px 0 64px;
@@ -308,6 +405,23 @@ const chapterIndex = computed(() => {
   max-width: 760px;
   margin: 0 auto;
   padding: 0 48px;
+}
+
+.ep-title {
+  font-size: 28px;
+  font-weight: 700;
+  border: none;
+  outline: none;
+  width: 100%;
+  color: var(--arc-text-primary);
+  background: transparent;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.ep-title::placeholder {
+  color: var(--arc-text-hint);
 }
 
 .ep-meta-row {
@@ -386,5 +500,60 @@ const chapterIndex = computed(() => {
   color: var(--arc-text-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+</style>
+
+<style>
+.arc-sel-toolbar {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: #1D1D1F;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  z-index: 9999;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.arc-sel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+
+.arc-sel-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.arc-sel-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.arc-sel-fade-enter-active,
+.arc-sel-fade-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.arc-sel-fade-enter-from,
+.arc-sel-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
 }
 </style>

@@ -65,7 +65,7 @@ type ChapterAssistantContextInput = {
   chapterContent: string                                // 当前章节的完整正文内容
 }
 
-type ChapterFirstDraftContextInput = {
+export type ChapterFirstDraftContextInput = {
   project?: ProjectSummary
   chapter?: ChapterDraft
   chapterVolume?: OutlineVolume
@@ -99,6 +99,17 @@ type ChapterFirstDraftContextInput = {
   chapterContent: string
   targetWordCount: number
   userPrompt: string
+  chapterMemo?: {
+    currentTask: string
+    readerExpectation: string
+    payoffs: string[]
+    holds: string[]
+    transitionFunctions: string
+    decisionChecks: string[]
+    endingChanges: string[]
+    doNotDo: string[]
+  }
+  recentEndingsTrail?: Array<{ chapterTitle: string; endingLine: string }>
 }
 
 // 构建发送给 AI 的章节助理上下文对象：
@@ -283,6 +294,8 @@ export function buildChapterFirstDraftContext(input: ChapterFirstDraftContextInp
       summary: item.summary
     })),
     projectSkills: input.projectSkills ?? [],
-    userPrompt: input.userPrompt
+    userPrompt: input.userPrompt,
+    chapterMemo: input.chapterMemo ?? null,
+    recentEndingsTrail: input.recentEndingsTrail ?? []
   }
 }

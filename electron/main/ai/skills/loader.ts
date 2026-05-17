@@ -28,9 +28,9 @@ export async function loadSkillReferences(
 
     try {
       const content = await readFile(filePath, 'utf-8')
-      // 上限从 800 提到 3000：写作技巧类参考文件通常 2000-4000 字，
-      // 截断太短模型只能看到目录级信息，无法吸收具体范例和规则。
-      results.push({ file: rule.file, content: content.slice(0, 3000) })
+      // 上限 12000：钩子/开篇/风格类核心参考文件常 30-100KB，
+      // 截到 12000 至少能容纳前 2-3 节具体范例与规则。
+      results.push({ file: rule.file, content: content.slice(0, 12000) })
     } catch {
       // skip unreadable reference files
     }

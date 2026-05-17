@@ -72,7 +72,8 @@ async function loadSkillDefinition(root: string, dirName: string, scope: 'builti
     const fullManifest = buildFullManifest(validatedManifest, heuristic)
 
     const referencesDir = join(skillDir, 'references')
-    const referencesCount = existsSync(referencesDir) ? await countFilesRecursive(referencesDir) : 0
+    const referenceFiles = existsSync(referencesDir) ? await listFilesRecursive(referencesDir) : []
+    const referencesCount = referenceFiles.length
 
     return {
       id: dirName,
@@ -88,6 +89,7 @@ async function loadSkillDefinition(root: string, dirName: string, scope: 'builti
       compatibilityNote: frontmatter.overrides.compatibilityNote ?? heuristic.compatibilityNote,
       enabled: frontmatter.overrides.enabled ?? heuristic.enabled,
       referencesCount,
+      referenceFiles: referenceFiles.map((f) => `references/${f}`),
       content
     }
   } catch {
@@ -95,16 +97,21 @@ async function loadSkillDefinition(root: string, dirName: string, scope: 'builti
   }
 }
 
-/** 递归统计目录下的文件数量 */
-async function countFilesRecursive(root: string): Promise<number> {
-  const entries = await readdir(root, { withFileTypes: true })
-  let total = 0
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      total += await countFilesRecursive(join(root, entry.name))
-    } else {
-      total += 1
+/** 递归列出目录下所有文件，返回相对 root 的路径 */
+async function listFilesRecursive(root: string): Promise<string[]> {
+  const out: string[] = []
+
+  async function walk(dir: string, prefix: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await walk(join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name)
+        continue
+      }
+      out.push(prefix ? `${prefix}/${entry.name}` : entry.name)
     }
   }
-  return total
+
+  await walk(root, '')
+  return out.sort()
 }

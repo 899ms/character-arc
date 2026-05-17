@@ -15,6 +15,8 @@ import chapterAssistant from './chapter-assistant'
 import chapterFirstDraft from './chapter-first-draft'
 import chapterSummarize from './chapter-summarize'
 import chapterScenePlan from './chapter-scene-plan'
+import chapterMemo from './chapter-memo'
+import chapterAudit from './chapter-audit'
 import plotThreadDetect from './plot-thread-detect'
 import workflowDocuments from './workflow-documents'
 import referenceStyleChunk from './reference-style-chunk'
@@ -52,6 +54,8 @@ register(chapterAssistant)
 register(chapterFirstDraft)
 register(chapterSummarize)
 register(chapterScenePlan)
+register(chapterMemo)
+register(chapterAudit)
 register(plotThreadDetect)
 register(workflowDocuments)
 register(referenceStyleChunk)

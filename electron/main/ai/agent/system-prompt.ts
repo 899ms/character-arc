@@ -9,17 +9,21 @@ export function buildSkillIndex(skills: SkillDefinition[]): string {
 
   const entries = skills.map((skill) => {
     const desc = (skill.description || '').replace(/\s+/g, ' ').trim().slice(0, 240)
-    return `- ${skill.id}：${desc}`
+    const files = skill.referenceFiles ?? []
+    if (!files.length) return `- ${skill.id}：${desc}`
+    const fileList = files.slice(0, 20).map((f) => `    - ${f}`).join('\n')
+    const more = files.length > 20 ? `\n    - …（共 ${files.length} 个文件，调用 skill_glob 查看完整列表）` : ''
+    return `- ${skill.id}：${desc}\n  references:\n${fileList}${more}`
   })
 
   return [
     '',
     '## 可用 SKILLS（按需加载，不要一次性全部加载）',
     '',
-    '当前任务可访问的 skill 索引如下。每个 skill 仅展示了名称和摘要，',
-    '如果你判断某个 skill 与当前任务相关，请用 `skill_load` 工具读取它的完整 SKILL.md，',
-    '再按需用 `skill_read_reference` / `skill_glob` / `skill_run_script` 读取它的子文件或运行脚本。',
-    '不相关的 skill 不要加载，避免浪费上下文。',
+    '当前任务可访问的 skill 索引如下，每个 skill 列出了它的 references/ 文件清单。',
+    '判断哪些参考文件与当前任务相关后，用 `skill_read_reference` 直接读对应文件；',
+    '想看 SKILL.md 主体用 `skill_load`；想列其他子目录用 `skill_glob`。',
+    '不相关的文件不要加载，避免浪费上下文。',
     '',
     ...entries
   ].join('\n')

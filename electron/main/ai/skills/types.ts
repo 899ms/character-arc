@@ -49,6 +49,7 @@ export type SkillDefinition = {
   compatibilityNote: string
   enabled: boolean
   referencesCount: number
+  referenceFiles: string[]
   content: string
 }
 

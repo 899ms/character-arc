@@ -56,6 +56,8 @@ export type AiTaskName =
   | 'chapter-first-draft'
   | 'chapter-summarize'
   | 'chapter-scene-plan'
+  | 'chapter-memo'
+  | 'chapter-audit'
   | 'plot-thread-detect'
   | 'project-bootstrap'
   | 'spiral-seed'
@@ -306,6 +308,34 @@ export type ChapterScenePlanResult = {
   scenes: Array<{ focus: string }>
 }
 
+/** 章节写作备忘：Writer 写正文前的硬指令清单（参考 inkos chapter_memo 设计） */
+export type ChapterMemoResult = {
+  memo: {
+    currentTask: string
+    readerExpectation: string
+    payoffs: string[]
+    holds: string[]
+    transitionFunctions: string
+    decisionChecks: string[]
+    endingChanges: string[]
+    doNotDo: string[]
+  }
+}
+
+/** 章节审计结果：写完整章后对照 memo 检查兑现情况（参考 inkos Auditor 设计） */
+export type ChapterAuditResult = {
+  audit: {
+    pass: boolean
+    wordCount: number
+    issues: Array<{
+      severity: 'critical' | 'warning' | 'hint'
+      category: string
+      ref: string
+      hint: string
+    }>
+  }
+}
+
 /** 单条情节线索检测结果 */
 export type PlotThreadDetectEntry = {
   title: string
@@ -336,6 +366,8 @@ export type AiTaskResult =
   | InspirationPackResult
   | PlotThreadDetectResult
   | ChapterScenePlanResult
+  | ChapterMemoResult
+  | ChapterAuditResult
   | SpiralSeedResult
   | SpiralExpandResult
   | SpiralValidateResult

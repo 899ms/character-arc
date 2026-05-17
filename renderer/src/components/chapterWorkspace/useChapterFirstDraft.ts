@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import { buildChapterFirstDraftContext } from '@/features/ai/chapterAssistantContext'
+import { buildChapterFirstDraftContext, type ChapterFirstDraftContextInput } from '@/features/ai/chapterAssistantContext'
 import {
   ensureEditorHtmlContent,
   getChapterPreviewText,
@@ -13,6 +13,17 @@ import { toIpcPayload } from '@/utils/ipcPayload'
 
 const TASK_KEY = 'chapter-first-draft'
 
+export type ChapterAuditPayload = {
+  pass: boolean
+  wordCount: number
+  issues: Array<{
+    severity: 'critical' | 'warning' | 'hint'
+    category: string
+    ref: string
+    hint: string
+  }>
+}
+
 export function useChapterFirstDraft(): {
   isGenerating: Ref<boolean>
   isStopping: Ref<boolean>
@@ -22,6 +33,8 @@ export function useChapterFirstDraft(): {
   executionLabel: Ref<string>
   progressPercent: Ref<number>
   progressText: Ref<string>
+  auditResult: Ref<ChapterAuditPayload | null>
+  isAuditing: Ref<boolean>
   start: () => Promise<void>
   stop: () => Promise<void>
   closeModal: () => void
@@ -44,6 +57,9 @@ export function useChapterFirstDraft(): {
 
   const progressPercent = ref(0)
   const progressText = ref('')
+
+  const auditResult = ref<ChapterAuditPayload | null>(null)
+  const isAuditing = ref(false)
 
   function recompute(): void {
     const target = Math.max(parseChapterWordTarget(appStore.selectedChapter?.wordTarget), 1)
@@ -69,6 +85,7 @@ export function useChapterFirstDraft(): {
     executionLabel.value = ''
     isStopping.value = false
     isGenerating.value = false
+    isAuditing.value = false
     recompute()
   }
 
@@ -182,6 +199,64 @@ export function useChapterFirstDraft(): {
               ? { title: firstChapter.title, summary: firstChapter.summary }
               : undefined
 
+          const recentEndingsTrail = appStore.chapters
+            .filter((c) => c.id !== chapter.id && Boolean(c.content?.trim()))
+            .slice(-3)
+            .map((c) => {
+              const plain = getPlainTextFromEditorContent(c.content ?? '').trim()
+              const lastLine = plain.split('\n').map((s) => s.trim()).filter(Boolean).at(-1) ?? ''
+              return {
+                chapterTitle: c.title,
+                endingLine: lastLine.length > 80 ? lastLine.slice(0, 77) + '...' : lastLine
+              }
+            })
+            .filter((entry) => entry.endingLine)
+
+          const memoBaseContext: Record<string, unknown> = {
+            projectId: project.id,
+            projectGenre: project.genre,
+            chapterTitle: chapter.title,
+            chapterSummary: chapter.summary,
+            chapterVolumeTitle: chapterVolume.title,
+            chapterVolumeSummary: chapterVolume.summary,
+            chapterWordTarget: chapter.wordTarget,
+            targetWordCount,
+            relatedChapters,
+            volumeChapterSummaries,
+            plotThreads: appStore.plotThreads
+              .filter((t) => t.status === 'open')
+              .map((t) => ({ title: t.title, description: t.description, status: t.status })),
+            worldviewEntries: appStore.worldviewEntries.map((e) => ({ title: e.title, content: e.content })),
+            characters: appStore.characters.map((c) => ({ name: c.name, role: c.role, description: c.description })),
+            characterRelationships: appStore.characterRelationships.map((r) => ({
+              fromCharacterId: r.fromCharacterId,
+              toCharacterId: r.toCharacterId,
+              type: r.type,
+              description: r.description,
+              intensity: r.intensity
+            })),
+            outlineItems: appStore.outlineItems
+              .filter((item) => item.volumeId === chapter.volumeId)
+              .map((item) => ({ title: item.title, summary: item.summary }))
+          }
+
+          executionLabel.value = '正在编排章节备忘…'
+          recompute()
+          let chapterMemo: ChapterFirstDraftContextInput['chapterMemo'] | undefined
+          try {
+            const memoResult = await window.characterArc.generateAi(toIpcPayload({
+              task: 'chapter-memo',
+              settings: appStore.appSettings,
+              clientTaskId: appStore.getClientTaskId(),
+              context: memoBaseContext
+            })) as { success: boolean; result?: { memo?: ChapterFirstDraftContextInput['chapterMemo'] }; error?: string }
+            if (memoResult.success && memoResult.result?.memo) {
+              chapterMemo = memoResult.result.memo
+            }
+          } catch {
+            // memo 步骤失败不阻塞主流程，回退到无 memo 的写作
+          }
+
           const context = buildChapterFirstDraftContext({
             project,
             chapter,
@@ -200,7 +275,9 @@ export function useChapterFirstDraft(): {
             chapterContent: getPlainTextFromEditorContent(chapter.content ?? ''),
             targetWordCount,
             userPrompt: `请生成这一章的完整初稿，目标字数约 ${targetWordCount} 字（参考值，优先保证情节自然完整）。如果当前正文为空，就从零起稿；如果当前正文不为空，也按整章重写处理，而不是续写。`,
-            projectSkills: await loadEnabledProjectSkillsContext(project, 'draft')
+            projectSkills: await loadEnabledProjectSkillsContext(project, 'draft'),
+            chapterMemo,
+            recentEndingsTrail
           })
 
           executionLabel.value = `正在生成本章初稿（目标约 ${targetWordCount} 字）…`
@@ -209,6 +286,33 @@ export function useChapterFirstDraft(): {
           if (fullText) {
             executionLabel.value = '正在覆盖当前章节'
             appStore.updateChapterContent(ensureEditorHtmlContent(fullText))
+
+            if (chapterMemo) {
+              executionLabel.value = '正在审计章节质量…'
+              isAuditing.value = true
+              try {
+                const auditResp = await window.characterArc.generateAi(toIpcPayload({
+                  task: 'chapter-audit',
+                  settings: appStore.appSettings,
+                  clientTaskId: appStore.getClientTaskId(),
+                  context: {
+                    projectId: project.id,
+                    chapterId: chapter.id,
+                    chapterTitle: chapter.title,
+                    targetWordCount,
+                    draftText: fullText,
+                    chapterMemo
+                  }
+                })) as { success: boolean; result?: { audit?: ChapterAuditPayload }; error?: string }
+                if (auditResp.success && auditResp.result?.audit) {
+                  auditResult.value = auditResp.result.audit
+                }
+              } catch {
+                // audit 步骤失败不影响章节落盘
+              } finally {
+                isAuditing.value = false
+              }
+            }
           }
         }
       )
@@ -245,6 +349,8 @@ export function useChapterFirstDraft(): {
     executionLabel,
     progressPercent,
     progressText,
+    auditResult,
+    isAuditing,
     start,
     stop,
     closeModal,

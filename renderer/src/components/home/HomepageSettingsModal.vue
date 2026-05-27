@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Cpu, Download, MonitorCog, Moon, Palette, PlugZap, RefreshCw, Save } from 'lucide-vue-next'
+import { Cpu, Download, Image, MonitorCog, Moon, Palette, PlugZap, RefreshCw, Save } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
-import { autoSaveOptions, formatAutoSaveIntervalLabel, isLiveAutoSaveInterval } from '@/features/settings/autoSave'
+import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
-import { getImageProviderPreset, imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
+import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
@@ -27,7 +27,6 @@ const isFetchingImageModels = ref(false)
 const fetchedImageModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
 
 const autoSaveSelectOptions = [...autoSaveOptions]
-const themeOptions = themePresets.map((preset) => ({ label: preset.label, value: preset.name }))
 const uiScaleOptions = [
   { label: '75%', value: 0.75 },
   { label: '85%', value: 0.85 },
@@ -53,11 +52,36 @@ const draftSettings = reactive<AppSettings>({
 })
 const draftTheme = ref<ThemeName>('ocean')
 
+const scrollContainer = ref<HTMLElement | null>(null)
+const activeNav = ref('sec-ai')
+const navItems = [
+  { id: 'sec-ai', label: 'AI 接口配置', icon: Cpu },
+  { id: 'sec-image', label: '图片生成配置', icon: Image },
+  { id: 'sec-theme', label: '界面主题', icon: Palette },
+  { id: 'sec-prefs', label: '应用偏好', icon: MonitorCog }
+]
+
+function scrollToSection(id: string): void {
+  activeNav.value = id
+  const el = document.getElementById(id)
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function handleScroll(): void {
+  const container = scrollContainer.value
+  if (!container) return
+  const sections = container.querySelectorAll<HTMLElement>('.settings-section')
+  for (const section of sections) {
+    const rect = section.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    if (rect.top - containerRect.top < 80) {
+      activeNav.value = section.id
+    }
+  }
+}
+
 const activeProviderPreset = computed(() => getProviderPreset(draftSettings.provider))
-const activeImageProviderPreset = computed(() => getImageProviderPreset(draftSettings.imageProvider))
-const activeThemePreset = computed(() => themePresets.find((preset) => preset.name === draftTheme.value) ?? themePresets[0])
-const draftAutoSaveLabel = computed(() => formatAutoSaveIntervalLabel(draftSettings.autoSaveInterval))
-const isDraftLiveAutoSave = computed(() => isLiveAutoSaveInterval(draftSettings.autoSaveInterval))
+const currentVersion = window.characterArc.version
 const modelSelectOptions = computed(() =>
   fetchedModels.value.map((m) => ({ label: m.id, value: m.id }))
 )
@@ -221,35 +245,22 @@ async function saveSettings(): Promise<void> {
     @close="closeModal"
   >
     <div class="settings-layout">
-      <aside class="settings-rail">
+      <nav class="settings-nav">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          class="nav-item"
+          :class="{ active: activeNav === item.id }"
+          @click="scrollToSection(item.id)"
+        >
+          <component :is="item.icon" :size="18" />
+          {{ item.label }}
+        </button>
+        <div class="nav-version">v{{ currentVersion }}</div>
+      </nav>
 
-
-        <div class="rail-stack">
-          <div class="rail-card">
-            <span class="rail-card-label">当前模型</span>
-            <strong>{{ activeProviderPreset.label }}</strong>
-            <p>{{ draftSettings.model }}</p>
-          </div>
-          <div class="rail-card theme-card">
-            <span class="rail-card-label">当前主题</span>
-            <strong>{{ activeThemePreset.label }}</strong>
-            <div class="rail-theme-preview" :style="{ background: activeThemePreset.primary }"></div>
-          </div>
-          <div class="rail-card">
-            <span class="rail-card-label">自动保存</span>
-            <strong>{{ draftAutoSaveLabel }}</strong>
-            <p>{{ isDraftLiveAutoSave ? '正文与工作区修改会尽快落盘。' : '按设定节奏进入自动保存队列。' }}</p>
-          </div>
-          <div class="rail-card draft-state-card" :class="{ pending: hasPendingChanges }">
-            <span class="rail-card-label">保存状态</span>
-            <strong>{{ hasPendingChanges ? '有未保存修改' : '已与当前设置同步' }}</strong>
-            <p>{{ hasPendingChanges ? '点击右下角保存设置后才会正式生效。' : '当前草稿和已保存设置一致。' }}</p>
-          </div>
-        </div>
-      </aside>
-
-      <div class="settings-main arc-scrollbar">
-        <section class="settings-section">
+      <div ref="scrollContainer" class="settings-main arc-scrollbar" @scroll="handleScroll">
+        <section id="sec-ai" class="settings-section">
           <div class="section-title">
             <Cpu :size="18" />
             <div>
@@ -327,12 +338,12 @@ async function saveSettings(): Promise<void> {
           </div>
         </section>
 
-        <section class="settings-section">
+        <section id="sec-image" class="settings-section">
           <div class="section-title">
-            <Download :size="18" />
+            <Image :size="18" />
             <div>
               <strong>图片生成配置</strong>
-              <p>封面工作台使用专用的图片生成接口，需单独配置，不会回退到文本模型。</p>
+              <p>封面工作台使用专用的图片生成接口，需单独配置。</p>
             </div>
           </div>
           <div class="settings-grid">
@@ -397,14 +408,9 @@ async function saveSettings(): Promise<void> {
               />
             </n-form-item>
           </div>
-          <div class="provider-hint-block">
-            <strong>{{ activeImageProviderPreset.label }}</strong>
-            <p>{{ activeImageProviderPreset.hint }}</p>
-            <code>{{ draftSettings.imageBaseUrl || '未填写地址' }}</code>
-          </div>
         </section>
 
-        <section class="settings-section">
+        <section id="sec-theme" class="settings-section">
           <div class="section-title">
             <Palette :size="18" />
             <div>
@@ -412,13 +418,6 @@ async function saveSettings(): Promise<void> {
               <p>统一首页与工作台的主色体验。</p>
             </div>
           </div>
-          <n-form-item label="应用主题色">
-            <n-select
-              :options="themeOptions"
-              :value="draftTheme"
-              @update:value="(value) => { draftTheme = (value ?? 'ocean') as ThemeName }"
-            />
-          </n-form-item>
           <div class="theme-swatches">
             <button
               v-for="preset in themePresets"
@@ -433,12 +432,12 @@ async function saveSettings(): Promise<void> {
           </div>
         </section>
 
-        <section class="settings-section">
+        <section id="sec-prefs" class="settings-section">
           <div class="section-title">
             <MonitorCog :size="18" />
             <div>
               <strong>应用偏好</strong>
-              <p>影响整个应用的保存节奏与显示比例。</p>
+              <p>保存节奏与显示比例。</p>
             </div>
           </div>
           <div class="settings-grid">
@@ -460,8 +459,10 @@ async function saveSettings(): Promise<void> {
           <div class="dark-mode-row">
             <div class="dark-mode-label">
               <Moon :size="15" />
-              <span>深色模式</span>
-              <span class="dark-mode-hint">将界面切换为深色背景，适合夜间长时间写作。</span>
+              <div>
+                <span class="dark-mode-text">深色模式</span>
+                <span class="dark-mode-hint">适合夜间长时间写作</span>
+              </div>
             </div>
             <n-switch
               :value="draftSettings.darkMode"
@@ -520,118 +521,91 @@ async function saveSettings(): Promise<void> {
 <style scoped>
 .settings-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 192px minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
 }
 
-.settings-rail {
+/* ── Left Nav ── */
+.settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 2px;
+  padding: 16px 12px;
+  border-right: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
 }
 
-.settings-rail-head {
-  padding: 4px 2px;
-}
-
-.rail-kicker {
-  display: inline-flex;
-  min-height: 30px;
+.nav-item {
+  display: flex;
   align-items: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-mix));
-  color: var(--arc-primary);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 0 12px;
-}
-
-.settings-rail-head h3 {
-  margin: 14px 0 10px;
-  color: var(--arc-text-primary);
-  font-size: 24px;
-  font-weight: 730;
-  letter-spacing: -0.03em;
-}
-
-.settings-rail-head p {
-  margin: 0;
-  color: var(--arc-text-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.rail-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rail-card {
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 12%, var(--arc-border));
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
   border-radius: 8px;
-  background: var(--arc-bg-surface);
-  padding: 16px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  font-size: 13.5px;
+  font-weight: 550;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s;
 }
 
-.draft-state-card.pending {
-  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-mix));
+.nav-item:hover {
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-text-primary);
 }
 
-.rail-card-label {
-  display: block;
+.nav-item.active {
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+}
+
+.nav-item :deep(svg) {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.nav-item.active :deep(svg) {
+  opacity: 1;
+}
+
+.nav-version {
+  margin-top: auto;
+  padding: 12px 12px 4px;
   color: var(--arc-text-hint);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 500;
 }
 
-.rail-card strong {
-  display: block;
-  margin-top: 8px;
-  color: var(--arc-text-primary);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.rail-card p {
-  margin: 6px 0 0;
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.rail-theme-preview {
-  width: 100%;
-  height: 44px;
-  margin-top: 12px;
-  border-radius: 14px;
-}
-
+/* ── Right Content ── */
 .settings-main {
-  max-height: min(76vh, 760px);
-  overflow: auto;
-  padding-right: 4px;
+  max-height: min(76vh, 720px);
+  overflow-y: auto;
+  padding: 24px 28px;
+  scroll-behavior: smooth;
 }
 
 .settings-section {
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  background: var(--arc-bg-surface);
-  padding: 20px;
+  padding-bottom: 28px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--arc-bg-surface-hover);
 }
 
-.settings-section + .settings-section {
-  margin-top: 16px;
+.settings-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 8px;
 }
 
 .section-title {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .section-title :deep(svg) {
@@ -647,9 +621,9 @@ async function saveSettings(): Promise<void> {
 }
 
 .section-title p {
-  margin: 6px 0 0;
-  color: var(--arc-text-secondary);
-  font-size: 12px;
+  margin: 4px 0 0;
+  color: var(--arc-text-hint);
+  font-size: 12.5px;
 }
 
 .settings-grid {
@@ -660,34 +634,16 @@ async function saveSettings(): Promise<void> {
 
 .provider-hint-block {
   margin: -2px 0 16px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 12%, var(--arc-border));
+  padding: 10px 14px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-mix));
-  padding: 14px 16px;
-}
-
-.provider-hint-block strong {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--arc-text-primary);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.provider-hint-block p {
-  margin: 0 0 8px;
-  color: var(--arc-text-secondary);
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-hint);
   font-size: 12px;
   line-height: 1.7;
 }
 
-.provider-hint-block code {
-  display: inline-block;
-  border-radius: 8px;
-  background: var(--arc-glass-08);
-  color: var(--arc-text-hint);
-  font-size: 12px;
-  padding: 3px 8px;
+.provider-hint-block p {
+  margin: 0;
 }
 
 .section-actions {
@@ -702,10 +658,7 @@ async function saveSettings(): Promise<void> {
   width: 100%;
 }
 
-.model-input-row .n-select {
-  flex: 1;
-}
-
+.model-input-row .n-select,
 .model-input-row .n-input {
   flex: 1;
 }
@@ -739,56 +692,39 @@ async function saveSettings(): Promise<void> {
 .theme-swatches {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .theme-dot {
   display: flex;
-  min-height: 82px;
+  min-height: 64px;
   align-items: flex-end;
   justify-content: center;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   color: white;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 12px;
+  font-size: 11.5px;
+  font-weight: 650;
+  padding: 10px;
   transition:
-    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.18s,
+    border-color 0.18s;
 }
 
 .theme-dot:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
 }
 
 .theme-dot:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .theme-dot.active {
   border-color: white;
   box-shadow: 0 0 0 2px var(--arc-bg-surface), 0 0 0 4px color-mix(in srgb, var(--arc-primary) 34%, transparent);
-}
-
-.storage-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  margin-top: 4px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-mix));
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-  padding: 0 12px;
-}
-
-.storage-note :deep(svg) {
-  color: var(--arc-primary);
 }
 
 .dark-mode-row {
@@ -798,17 +734,14 @@ async function saveSettings(): Promise<void> {
   gap: 16px;
   margin-top: 14px;
   border: 1px solid var(--arc-border);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 12px 16px;
 }
 
 .dark-mode-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--arc-text-primary);
-  font-size: 14px;
-  font-weight: 600;
+  gap: 10px;
 }
 
 .dark-mode-label :deep(svg) {
@@ -816,8 +749,15 @@ async function saveSettings(): Promise<void> {
   flex-shrink: 0;
 }
 
+.dark-mode-text {
+  font-size: 13.5px;
+  font-weight: 620;
+  color: var(--arc-text-primary);
+}
+
 .dark-mode-hint {
-  color: var(--arc-text-secondary);
+  display: block;
+  color: var(--arc-text-hint);
   font-size: 12px;
   font-weight: 400;
 }
@@ -880,13 +820,8 @@ async function saveSettings(): Promise<void> {
   letter-spacing: 0.02em;
 }
 
-.dark-style-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .dark-style-meta strong {
+  display: block;
   font-size: 13px;
   font-weight: 600;
   color: var(--arc-text-primary);
@@ -899,10 +834,21 @@ async function saveSettings(): Promise<void> {
   color: var(--arc-text-secondary);
 }
 
-@media (max-width: 720px) {
-  .dark-style-grid {
-    grid-template-columns: 1fr;
-  }
+.storage-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-top: 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-weak));
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  padding: 0 12px;
+}
+
+.storage-note :deep(svg) {
+  color: var(--arc-primary);
 }
 
 .settings-footer-actions {
@@ -915,6 +861,10 @@ async function saveSettings(): Promise<void> {
   .settings-layout {
     grid-template-columns: 1fr;
   }
+
+  .settings-nav {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
@@ -923,9 +873,8 @@ async function saveSettings(): Promise<void> {
     grid-template-columns: 1fr;
   }
 
-  .settings-section,
-  .rail-card {
-    border-radius: 8px;
+  .dark-style-grid {
+    grid-template-columns: 1fr;
   }
 
   .settings-footer-actions {

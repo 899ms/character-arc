@@ -41,6 +41,8 @@ const draftSettings = reactive<AppSettings>({
   model: '',
   apiKey: '',
   baseUrl: '',
+  aiProfiles: [],
+  activeAiProfileId: '',
   imageProvider: '',
   imageModel: '',
   imageApiKey: '',
@@ -109,6 +111,8 @@ function syncDraftFromStore(): void {
   draftSettings.model = appStore.appSettings.model
   draftSettings.apiKey = appStore.appSettings.apiKey
   draftSettings.baseUrl = appStore.appSettings.baseUrl
+  draftSettings.aiProfiles = [...appStore.appSettings.aiProfiles]
+  draftSettings.activeAiProfileId = appStore.appSettings.activeAiProfileId
   draftSettings.imageProvider = appStore.appSettings.imageProvider
   draftSettings.imageModel = appStore.appSettings.imageModel
   draftSettings.imageApiKey = appStore.appSettings.imageApiKey

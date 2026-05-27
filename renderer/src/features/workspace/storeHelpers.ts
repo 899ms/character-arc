@@ -5,6 +5,7 @@ import { DEFAULT_CHAPTER_WORD_TARGET, normalizeChapterWordTarget } from '@/featu
 import { createOutlineVolume as createWorkspaceVolume } from '@/features/workspace/outlineVolumes'
 import { createDemoWorkspace, normalizeWorkspace } from '@/features/workspace/projectWorkspace'
 import type {
+  AiProfile,
   AiRunRecord,
   AppSettings,
   ChapterAssistantPromptTemplate,
@@ -231,6 +232,8 @@ export const defaultAppSettings: AppSettings = {
   model: 'deepseek-chat',
   apiKey: '',
   baseUrl: 'https://api.deepseek.com/v1',
+  aiProfiles: [],
+  activeAiProfileId: '',
   imageProvider: '',
   imageModel: '',
   imageApiKey: '',
@@ -320,11 +323,31 @@ function sanitizeSettingString(value: unknown, fallback: string): string {
 
 export function normalizeAppSettings(settings?: Partial<AppSettings> | null): AppSettings {
   const source = settings ?? {}
+  const provider = sanitizeSettingString(source.provider, defaultAppSettings.provider)
+  const model = sanitizeSettingString(source.model, defaultAppSettings.model)
+  const apiKey = sanitizeSettingString(source.apiKey, defaultAppSettings.apiKey)
+  const baseUrl = sanitizeSettingString(source.baseUrl, defaultAppSettings.baseUrl)
+
+  let aiProfiles = Array.isArray(source.aiProfiles) ? source.aiProfiles : []
+  let activeAiProfileId = sanitizeSettingString(source.activeAiProfileId, '')
+
+  if (aiProfiles.length === 0 && (apiKey || model !== defaultAppSettings.model)) {
+    const migratedId = `profile-${Date.now()}`
+    aiProfiles = [{ id: migratedId, name: provider || 'Default', provider, baseUrl, apiKey, model }]
+    activeAiProfileId = migratedId
+  }
+
+  if (activeAiProfileId && !aiProfiles.find(p => p.id === activeAiProfileId)) {
+    activeAiProfileId = aiProfiles[0]?.id ?? ''
+  }
+
   return {
-    provider: sanitizeSettingString(source.provider, defaultAppSettings.provider),
-    model: sanitizeSettingString(source.model, defaultAppSettings.model),
-    apiKey: sanitizeSettingString(source.apiKey, defaultAppSettings.apiKey),
-    baseUrl: sanitizeSettingString(source.baseUrl, defaultAppSettings.baseUrl),
+    provider,
+    model,
+    apiKey,
+    baseUrl,
+    aiProfiles,
+    activeAiProfileId,
     imageProvider: sanitizeSettingString(source.imageProvider, defaultAppSettings.imageProvider),
     imageModel: sanitizeSettingString(source.imageModel, defaultAppSettings.imageModel),
     imageApiKey: sanitizeSettingString(source.imageApiKey, defaultAppSettings.imageApiKey),

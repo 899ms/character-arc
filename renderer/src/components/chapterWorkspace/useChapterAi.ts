@@ -123,28 +123,41 @@ export function useChapterAi(): {
   async function saveCurrentSession(): Promise<void> {
     const projectId = appStore.currentProject?.id
     if (!projectId || messages.value.length === 0) return
+
+    await appStore.persistWorkspace()
+    if (appStore.persistenceError) {
+      throw new Error(appStore.persistenceError)
+    }
+
     if (!currentSessionId.value) {
       currentSessionId.value = generateSessionId()
     }
-    await window.characterArc.saveSession({
+    const result = await window.characterArc.saveSession(toIpcPayload({
       id: currentSessionId.value,
       projectId,
       title: deriveSessionTitle(),
       messages: messages.value
-    })
+    }))
+    if (!result.success) {
+      throw new Error(result.error ?? '保存历史会话失败')
+    }
     await refreshSessions()
   }
 
   async function loadSession(sessionId: string): Promise<void> {
     const result = await window.characterArc.loadSession(sessionId)
-    if (result.success && result.result) {
-      currentSessionId.value = result.result.id
-      messages.value = result.result.messages as ChapterAiMessage[]
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? '加载历史会话失败')
     }
+    currentSessionId.value = result.result.id
+    messages.value = result.result.messages as ChapterAiMessage[]
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
-    await window.characterArc.deleteSession(sessionId)
+    const result = await window.characterArc.deleteSession(sessionId)
+    if (!result.success) {
+      throw new Error(result.error ?? '删除历史会话失败')
+    }
     if (currentSessionId.value === sessionId) {
       currentSessionId.value = null
       messages.value = []
@@ -409,7 +422,13 @@ export function useChapterAi(): {
       }
     }
 
-    void saveCurrentSession()
+    void saveCurrentSession().catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : '保存历史会话失败'
+      const existing = messages.value.find((item) => item.role === 'assistant' && item.content === `会话保存失败：${errorMessage}`)
+      if (!existing) {
+        pushMessage('assistant', `会话保存失败：${errorMessage}`)
+      }
+    })
   }
 
   async function stop(): Promise<void> {

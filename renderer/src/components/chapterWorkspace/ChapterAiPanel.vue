@@ -27,21 +27,38 @@ const { messages, isResponding, agentStatus, hasSelection, enabledContextModules
 
 function handleNewSession(): void {
   if (messages.value.length > 0) {
-    void saveCurrentSession()
+    void (async () => {
+      try {
+        await saveCurrentSession()
+        newSession()
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '保存历史会话失败')
+      }
+    })()
+    return
   }
   newSession()
 }
 
 async function handleLoadSession(sessionId: string): Promise<void> {
-  if (messages.value.length > 0 && currentSessionId.value !== sessionId) {
-    await saveCurrentSession()
+  try {
+    if (messages.value.length > 0 && currentSessionId.value !== sessionId) {
+      await saveCurrentSession()
+    }
+    await loadSession(sessionId)
+    showSessionList.value = false
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加载历史会话失败')
   }
-  await loadSession(sessionId)
-  showSessionList.value = false
 }
 
 async function handleDeleteSession(sessionId: string): Promise<void> {
-  await deleteSession(sessionId)
+  try {
+    await deleteSession(sessionId)
+    message.success('已删除历史会话')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '删除历史会话失败')
+  }
 }
 
 function toggleSessionList(): void {

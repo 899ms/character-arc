@@ -81,3 +81,33 @@ test('不能用其他会话的轮次作为截断锚点', () => {
   assert.throws(() => conversation.truncateFrom(b.id, turn.id), /找不到要撤回/)
   assert.equal(conversation.listTurns(a.id).length, 1)
 })
+
+test('应用重启后会把遗留的生成中轮次恢复为已取消', () => {
+  const db = createDatabase()
+  const beforeRestart = new ConversationManager(db)
+  const session = beforeRestart.createSession({
+    projectId: 'project-1',
+    surfaceId: 'global-page',
+    title: '异常退出会话'
+  })
+  const interrupted = beforeRestart.createTurn({
+    sessionId: session.id,
+    userMessage: '生成到一半时退出'
+  })
+  beforeRestart.appendEvent(interrupted.id, {
+    kind: 'chunk',
+    seq: 0,
+    delta: '已经生成的内容'
+  })
+
+  const afterRestart = new ConversationManager(db)
+  assert.equal(afterRestart.recoverInterruptedTurns(), 1)
+  assert.equal(afterRestart.getTurn(interrupted.id)?.status, 'canceled')
+  assert.deepEqual(
+    afterRestart.listEvents(interrupted.id).map((event) => event.kind),
+    ['chunk', 'canceled']
+  )
+
+  assert.equal(afterRestart.recoverInterruptedTurns(), 0)
+  assert.equal(afterRestart.listEvents(interrupted.id).length, 2)
+})

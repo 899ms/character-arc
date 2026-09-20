@@ -459,6 +459,31 @@ export class ConversationManager {
     return rows.map(rowToTurn)
   }
 
+  /** 将仍处于 streaming 的单个 Turn 幂等收口为 canceled。 */
+  cancelStreamingTurn(id: string): TurnEvent | null {
+    const turn = this.getTurn(id)
+    if (!turn || turn.status !== 'streaming') return null
+
+    const event: TurnEvent = {
+      kind: 'canceled',
+      seq: 0,
+      content: turn.assistantMessage || undefined
+    }
+
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const persisted = this.appendEvent(id, event)
+      this.stmts.updateTurnStatus.run('canceled', turn.assistantMessage, id)
+      this.touchSession(turn.sessionId)
+      this.db.exec('COMMIT')
+      return { ...event, seq: persisted.seq }
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      this.nextSeqByTurn.delete(id)
+      throw error
+    }
+  }
+
   /**
    * 应用进程重启后，数据库里的 streaming Turn 已不可能继续执行。
    * 将这些孤儿 Turn 收口为 canceled，避免前端恢复后永久锁在“生成中”。

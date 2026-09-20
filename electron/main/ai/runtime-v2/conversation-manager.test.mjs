@@ -111,3 +111,26 @@ test('应用重启后会把遗留的生成中轮次恢复为已取消', () => {
   assert.equal(afterRestart.recoverInterruptedTurns(), 0)
   assert.equal(afterRestart.listEvents(interrupted.id).length, 2)
 })
+
+test('停止生成会幂等收口生成中轮次并保留已有事件', () => {
+  const db = createDatabase()
+  const conversation = new ConversationManager(db)
+  const session = conversation.createSession({
+    projectId: 'project-1',
+    surfaceId: 'global-page',
+    title: '停止生成测试'
+  })
+  const turn = conversation.createTurn({ sessionId: session.id, userMessage: '请生成内容' })
+  conversation.appendEvent(turn.id, { kind: 'chunk', seq: 0, delta: '已有内容' })
+
+  const canceled = conversation.cancelStreamingTurn(turn.id)
+  assert.equal(canceled?.kind, 'canceled')
+  assert.equal(conversation.getTurn(turn.id)?.status, 'canceled')
+  assert.deepEqual(
+    conversation.listEvents(turn.id).map((event) => event.kind),
+    ['chunk', 'canceled']
+  )
+
+  assert.equal(conversation.cancelStreamingTurn(turn.id), null)
+  assert.equal(conversation.listEvents(turn.id).length, 2)
+})

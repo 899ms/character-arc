@@ -83,6 +83,7 @@ let deps: AssistantIpcDeps | null = null
 interface ActiveTurn {
   controller: AbortController
   sessionId: string
+  turnId?: string
 }
 
 const activeTurns = new Map<string, ActiveTurn>()
@@ -312,10 +313,11 @@ function registerTurnHandlers(): void {
     ASSISTANT_IPC_CHANNELS.TURN_SEND,
     async (event, payload: TurnSendRequest) => {
       const controller = new AbortController()
+      const activeTurn: ActiveTurn = { controller, sessionId: payload.sessionId }
       const activeKeys = new Set<string>()
       const registerActiveKey = (key?: string): void => {
         if (!key) return
-        activeTurns.set(key, { controller, sessionId: payload.sessionId })
+        activeTurns.set(key, activeTurn)
         activeKeys.add(key)
       }
       registerActiveKey(payload.clientRequestId)
@@ -359,6 +361,7 @@ function registerTurnHandlers(): void {
           maxSteps: payload.surface.maxSteps,
           maxOutputTokens: plan.maxOutputTokens,
           onTurnCreated: (turnId) => {
+            activeTurn.turnId = turnId
             registerActiveKey(turnId)
             appendRuntimeEvent(cm, emitter, session.id, turnId, {
               kind: 'skill_plan',
@@ -408,12 +411,31 @@ function registerTurnHandlers(): void {
 
   ipcMain.handle(
     ASSISTANT_IPC_CHANNELS.TURN_CANCEL,
-    async (_event, payload: TurnCancelRequest) => {
+    async (event, payload: TurnCancelRequest) => {
       const active = activeTurns.get(payload.turnId)
-      if (!active) return { ok: false, reason: 'turn not active or already finished' }
-      active.controller.abort()
-      activeTurns.delete(payload.turnId)
-      return { ok: true }
+      if (active) active.controller.abort()
+
+      const cm = await getConversation()
+      const persistedTurnId = active?.turnId ?? payload.turnId
+      const canceledEvent = cm.cancelStreamingTurn(persistedTurnId)
+      if (canceledEvent) {
+        try {
+          event.sender.send(ASSISTANT_IPC_CHANNELS.EVENT_STREAM, {
+            sessionId: payload.sessionId,
+            turnId: persistedTurnId,
+            event: canceledEvent
+          } satisfies AssistantEventPush)
+        } catch {
+          // renderer 已销毁则仅保留数据库终态
+        }
+      }
+
+      if (active || canceledEvent) return { ok: true }
+
+      // 停止操作保持幂等：任务刚结束但终态事件尚未渲染时，也视为已停止。
+      const turn = cm.getTurn(payload.turnId)
+      if (turn && turn.status !== 'streaming') return { ok: true }
+      return { ok: false, reason: '未找到正在运行的生成任务，已刷新会话状态。' }
     }
   )
 

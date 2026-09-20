@@ -775,16 +775,29 @@ export function useAssistant(options: UseAssistantOptions) {
 
   async function cancel(): Promise<void> {
     if (!streamingTurnId.value || !activeSessionId.value || isCanceling.value) return
+    const turnId = streamingTurnId.value
     isCanceling.value = true
     try {
       const result = await A.turnCancel({
         sessionId: activeSessionId.value,
-        turnId: streamingTurnId.value
+        turnId
       })
-      if (!result.ok) {
+      if (result.ok) {
+        turns.value = turns.value.map((turn) => (
+          turn.id === turnId ? { ...turn, status: 'canceled' } : turn
+        ))
+        if (streamingTurnId.value === turnId) streamingTurnId.value = null
         isCanceling.value = false
-        lastError.value = result.reason || '当前生成未能停止，请稍后重试。'
+        lastError.value = null
+        return
       }
+
+      // 后端任务可能刚好已经结束；重拉终态，避免把过时的 streaming 留在界面。
+      await reloadTurns()
+      isCanceling.value = false
+      lastError.value = isStreaming.value
+        ? (result.reason || '当前生成未能停止，请稍后重试。')
+        : null
     } catch (error) {
       isCanceling.value = false
       lastError.value = error instanceof Error ? error.message : '停止生成失败'
